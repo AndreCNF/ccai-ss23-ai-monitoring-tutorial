@@ -1,0 +1,5 @@
+overpy==0.6
+pandas==1.5.3
+geopandas==0.12.2
+openpyxl==3.1.2
+requests==2.28.2
