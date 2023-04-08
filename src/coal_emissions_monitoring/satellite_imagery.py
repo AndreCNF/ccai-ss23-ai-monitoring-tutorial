@@ -5,11 +5,13 @@ from loguru import logger
 from shapely.geometry.base import BaseGeometry
 from datetime import datetime
 
+API_URL = "https://earth-search.aws.element84.com/v0"
+COLLECTION = "sentinel-s2-l2a-cogs"  # Sentinel-2, Level 2A, COGs
+STAC_CLIENT = pystac_client.Client.open(API_URL)
+
 
 def get_aws_cog_links_from_geom(
-    stac_client: pystac_client.Client,
     geometry: BaseGeometry,
-    collection: str = "sentinel-s2-l2a-cogs",
     start_date: Optional[datetime] = datetime(2022, 1, 1),
     end_date: Optional[datetime] = datetime(2022, 12, 31),
     max_cloud_cover: Optional[int] = None,
@@ -20,17 +22,9 @@ def get_aws_cog_links_from_geom(
     Retrieve links from AWS' Sentinel 2 L2A STAC
 
     Args:
-        client (pystac_client.Client):
-            The `pystac_client` that queries STAC
         geometry (BaseGeometry):
             The geometry to query for images that
             contain it in STAC
-        collection (str):
-            The STAC collection to query
-            For Sentinel 2 L2A, this is
-            "sentinel-s2-l2a-cogs";
-            For Sentinel 2 L1C, this is
-            "sentinel-s2-l1c"
         start_date (Optional[datetime]):
             Optional start date to filter images on
         end_date (Optional[datetime]):
@@ -59,8 +53,8 @@ def get_aws_cog_links_from_geom(
     elif max_cloud_cover is not None:
         cloud_filter = f"eo:cloud_cover<={max_cloud_cover}"
     # query the STAC collection(s) in a specific bounding box and search criteria
-    search = stac_client.search(
-        collections=[collection],
+    search = STAC_CLIENT.search(
+        collections=[COLLECTION],
         bbox=bbox,
         datetime=f"{start_date.strftime('%Y-%m-%d')}/{end_date.strftime('%Y-%m-%d')}",
         query=[cloud_filter] if max_cloud_cover is not None else None,
@@ -86,6 +80,5 @@ def get_aws_cog_links_from_geom(
         output[key] = [item.assets[key].href for item in items]
     output["cloud_cover"] = [item.properties["eo:cloud_cover"] for item in items]
     output[sort_by] = [item.properties[sort_by] for item in items]
-    if output_dataframe:
-        output = pd.DataFrame(output)
+    output = pd.DataFrame(output)
     return output
