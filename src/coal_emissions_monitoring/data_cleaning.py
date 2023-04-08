@@ -1,4 +1,5 @@
 from pathlib import Path
+import warnings
 from typing import Callable, Optional, Union
 
 import pandas as pd
@@ -7,6 +8,10 @@ import overpy
 
 GLOBAL_CRS = "EPSG:4326"
 OSM_API = overpy.Overpass()
+
+# suppress geopandas CRS warning as we don't need to worry too much about
+# the precision of distances
+warnings.filterwarnings("ignore", message="Geometry is in a geographic CRS*")
 
 
 def clean_column_names(
