@@ -6,7 +6,8 @@ import pandas as pd
 import geopandas as gpd
 import overpy
 
-GLOBAL_CRS = "EPSG:4326"
+from coal_emissions_monitoring.constants import GLOBAL_EPSG
+
 OSM_API = overpy.Overpass()
 
 # suppress geopandas CRS warning as we don't need to worry too much about
@@ -94,7 +95,7 @@ def load_clean_data_gdf(
             df["longitude"],
             df["latitude"],
         ),
-        crs=GLOBAL_CRS,
+        crs=f"EPSG:{GLOBAL_EPSG}",
     )
     return gdf
 
@@ -227,6 +228,8 @@ def clean_campd_emissions(df: pd.DataFrame) -> pd.DataFrame:
     df = clean_column_names(df)
     # fix datetime column data type
     df.date = pd.to_datetime(df.date)
+    # fill missing values (emissions seem to be ignored if their value is 0)
+    df = df.fillna(0)
     return df
 
 
@@ -300,3 +303,80 @@ def load_osm_data(
         crs="EPSG:4326",
     )
     return gdf
+
+
+def clean_image_metadata(df: pd.DataFrame, cog_type: str = "visual") -> pd.DataFrame:
+    """
+    Clean the image metadata data frame.
+
+    Args:
+        df (pd.DataFrame):
+            Image metadata data frame
+        cog_type (str):
+            Type of COG to filter to
+
+    Returns:
+        df (pd.DataFrame):
+            Cleaned image metadata data frame
+    """
+    df = clean_column_names(df)
+    # fix datetime column data type
+    df.ts = pd.to_datetime(df.ts)
+    # filter to most relevant columns
+    df.rename(columns={cog_type: "cog_url"}, inplace=True)
+    df = df[["facility_id", "ts", "cloud_cover", "cog_url"]]
+    return df
+
+
+def load_clean_image_metadata_df(
+    image_metadata_path: Union[str, Path], cog_type: str = "visual"
+) -> pd.DataFrame:
+    """
+    Load and clean the image metadata data frame.
+
+    Args:
+        image_metadata_path (Union[str, Path]):
+            Path to image metadata data
+        cog_type (str):
+            Type of COG to filter to
+
+    Returns:
+        df (pd.DataFrame):
+            Cleaned image metadata data frame
+    """
+    return load_clean_data_df(
+        data_path=image_metadata_path,
+        load_func=pd.read_csv,
+        clean_func=lambda df: clean_image_metadata(df, cog_type=cog_type),
+    )
+
+
+def join_image_metadata_and_emissions(
+    image_metadata_df: pd.DataFrame, emissions_df: pd.DataFrame
+) -> pd.DataFrame:
+    """
+    Join the image metadata and emissions data frames.
+
+    Args:
+        image_metadata_df (pd.DataFrame):
+            Image metadata data frame
+        emissions_df (pd.DataFrame):
+            Emissions data frame
+
+    Returns:
+        df (pd.DataFrame):
+            Joined image metadata and emissions data frame
+    """
+    # remove the hour info from the date so as to join by day of the year
+    image_metadata_df["date_without_time"] = image_metadata_df["ts"].dt.date
+    emissions_df["date_without_time"] = emissions_df["date"].dt.date
+    # merge the two data frames
+    merged_df = pd.merge(
+        left=emissions_df,
+        right=image_metadata_df,
+        how="inner",
+        on=["facility_id", "date_without_time"],
+    )
+    # drop the date without time column
+    merged_df.drop(columns=["date_without_time"], inplace=True)
+    return merged_df
