@@ -7,12 +7,15 @@ import geopandas as gpd
 import overpy
 
 from coal_emissions_monitoring.constants import GLOBAL_EPSG
+from coal_emissions_monitoring.satellite_imagery import create_aoi_for_plants
 
 OSM_API = overpy.Overpass()
 
 # suppress geopandas CRS warning as we don't need to worry too much about
 # the precision of distances
 warnings.filterwarnings("ignore", message="Geometry is in a geographic CRS*")
+# suppress pandas warning of setting value in copy
+warnings.filterwarnings("ignore", message="A value is trying to be set on a copy*")
 
 
 def clean_column_names(
@@ -351,32 +354,71 @@ def load_clean_image_metadata_df(
     )
 
 
-def join_image_metadata_and_emissions(
-    image_metadata_df: pd.DataFrame, emissions_df: pd.DataFrame
-) -> pd.DataFrame:
+def get_final_dataset(
+    image_metadata_path: Union[str, Path],
+    campd_facilities_path: Union[str, Path],
+    campd_emissions_path: Union[str, Path],
+    cog_type: str = "visual",
+) -> gpd.GeoDataFrame:
     """
-    Join the image metadata and emissions data frames.
+    Get the final dataset that has the facility and image metadata, as well as
+    the emissions data that we'll train models on.
 
     Args:
-        image_metadata_df (pd.DataFrame):
-            Image metadata data frame
-        emissions_df (pd.DataFrame):
-            Emissions data frame
+        image_metadata_path (Union[str, Path]):
+            Path to image metadata data
+        campd_facilities_path (Union[str, Path]):
+            Path to CAMPD facilities data
+        campd_emissions_path (Union[str, Path]):
+            Path to CAMPD emissions data
 
     Returns:
-        df (pd.DataFrame):
-            Joined image metadata and emissions data frame
+        gdf (gpd.GeoDataFrame):
+            Final dataset that has the facility and image metadata, as well as
+            the emissions data that we'll train models on
     """
+    # load all data
+    image_metadata_df = load_clean_image_metadata_df(
+        image_metadata_path=image_metadata_path, cog_type=cog_type
+    )
+    campd_facilities_gdf = load_clean_campd_facilities_gdf(
+        campd_facilities_path=campd_facilities_path
+    )
+    campd_facilities_gdf = create_aoi_for_plants(campd_facilities_gdf)
+    campd_emissions_df = load_clean_campd_emissions_df(
+        campd_emissions_path=campd_emissions_path
+    )
     # remove the hour info from the date so as to join by day of the year
     image_metadata_df["date_without_time"] = image_metadata_df["ts"].dt.date
-    emissions_df["date_without_time"] = emissions_df["date"].dt.date
-    # merge the two data frames
+    campd_emissions_df["date_without_time"] = campd_emissions_df["date"].dt.date
+    # merge the emissions with image metadata
     merged_df = pd.merge(
-        left=emissions_df,
+        left=campd_emissions_df,
         right=image_metadata_df,
         how="inner",
         on=["facility_id", "date_without_time"],
     )
-    # drop the date without time column
-    merged_df.drop(columns=["date_without_time"], inplace=True)
+    # merge the facilities with the merged emissions and image metadata
+    merged_df = pd.merge(
+        left=merged_df,
+        right=campd_facilities_gdf,
+        how="inner",
+        on="facility_id",
+        suffixes=("", "_to_delete"),
+    )
+    # filter to the columns that we care about for model training
+    merged_df = merged_df[
+        [
+            "facility_id",
+            "facility_name",
+            "latitude",
+            "longitude",
+            "ts",
+            "co2_mass_short_tons",
+            "cloud_cover",
+            "cog_url",
+            "geometry",
+        ]
+    ]
+    merged_df.drop_duplicates(["facility_id", "ts"], inplace=True)
     return merged_df

@@ -9,3 +9,5 @@ CROP_SIZE_PX = 256
 START_DATE = datetime(year=2019, month=1, day=1)
 END_DATE = datetime(year=2023, month=3, day=31)
 MAX_CLOUD_COVER = 1
+TRAIN_VAL_RATIO = 0.8
+TEST_YEAR = 2023
