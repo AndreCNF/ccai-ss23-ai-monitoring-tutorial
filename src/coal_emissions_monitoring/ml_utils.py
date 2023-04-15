@@ -24,43 +24,42 @@ def get_facility_set_mapper(
             A mapper from facility ID to a set of train or validation
     """
     campd_facilities_gdf = load_clean_campd_facilities_gdf(campd_facilities_path)
-    # find distance to the nearest facility
+    assigned_facilities = set()
     for facility_id, facility_gdf in campd_facilities_gdf.groupby("facility_id"):
-        other_facilities_gdf = campd_facilities_gdf.loc[
-            campd_facilities_gdf.facility_id != facility_id, ["facility_id", "geometry"]
-        ]
-        other_facilities_gdf.rename(
-            columns={"facility_id": "nearest_facility_id"}, inplace=True
-        )
-        nearest_facility_gdf = gpd.sjoin_nearest(
-            facility_gdf,
-            other_facilities_gdf,
-            distance_col="dist_to_nearest_facility",
-            max_distance=0.1,
-        ).head(1)
-        if nearest_facility_gdf.empty:
+        if facility_id in assigned_facilities:
             continue
-        campd_facilities_gdf.loc[
-            campd_facilities_gdf.facility_id == facility_id, "dist_to_nearest_facility"
-        ] = nearest_facility_gdf.dist_to_nearest_facility
-        campd_facilities_gdf.loc[
-            campd_facilities_gdf.facility_id == facility_id, "nearest_facility_id"
-        ] = nearest_facility_gdf.nearest_facility_id
-    # assign a data set to each facility
-    for facility_id, facility_df in campd_facilities_gdf.groupby("facility_id"):
+        # assign a data set to the facility
         data_set = np.random.choice(
             ["train", "val"], p=[train_val_ratio, 1 - train_val_ratio]
         )
         campd_facilities_gdf.loc[
             campd_facilities_gdf.facility_id == facility_id, "data_set"
         ] = data_set
-        nearest_facility_id = facility_df.nearest_facility_id.values[0]
-        if not np.isnan(nearest_facility_id):
-            # apply the same data set to the nearest facility
-            campd_facilities_gdf.loc[
-                campd_facilities_gdf.facility_id == nearest_facility_id,
-                "data_set",
-            ] = data_set
+        assigned_facilities.add(facility_id)
+        # apply the same data set to intersecting facilities
+        other_facilities_gdf = campd_facilities_gdf.loc[
+            campd_facilities_gdf.facility_id != facility_id, ["facility_id", "geometry"]
+        ]
+        other_facilities_gdf.rename(
+            columns={"facility_id": "intersecting_facility_id"}, inplace=True
+        )
+        intersecting_facilities_gdf = gpd.sjoin(
+            facility_gdf,
+            other_facilities_gdf,
+            how="inner",
+            predicate="intersects",
+        )
+        if intersecting_facilities_gdf.empty:
+            continue
+        else:
+            for intersecting_facility_id in intersecting_facilities_gdf[
+                "intersecting_facility_id"
+            ].unique():
+                campd_facilities_gdf.loc[
+                    campd_facilities_gdf.facility_id == intersecting_facility_id,
+                    "data_set",
+                ] = data_set
+                assigned_facilities.add(intersecting_facility_id)
     # create a mapper from facility ID to a set of train or validation
     return campd_facilities_gdf.groupby("facility_id").data_set.first().to_dict()
 
@@ -83,7 +82,7 @@ def split_data_in_sets(
         str:
             The data set
     """
-    if row.ts.dt.year == test_year:
+    if row.ts.year == test_year:
         data_set = "test"
     else:
         data_set = data_set_mapper[row.facility_id]

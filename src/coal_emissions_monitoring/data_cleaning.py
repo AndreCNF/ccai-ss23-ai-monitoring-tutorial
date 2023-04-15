@@ -421,4 +421,10 @@ def get_final_dataset(
         ]
     ]
     merged_df.drop_duplicates(["facility_id", "ts"], inplace=True)
+    # make sure that it's in geopandas format
+    merged_df = gpd.GeoDataFrame(
+        merged_df,
+        geometry=merged_df.geometry,
+        crs=f"EPSG:{GLOBAL_EPSG}",
+    )
     return merged_df
