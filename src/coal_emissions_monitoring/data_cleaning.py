@@ -6,7 +6,7 @@ import pandas as pd
 import geopandas as gpd
 import overpy
 
-from coal_emissions_monitoring.constants import GLOBAL_EPSG
+from coal_emissions_monitoring.constants import GLOBAL_EPSG, FINAL_COLUMNS
 from coal_emissions_monitoring.satellite_imagery import create_aoi_for_plants
 
 OSM_API = overpy.Overpass()
@@ -16,6 +16,8 @@ OSM_API = overpy.Overpass()
 warnings.filterwarnings("ignore", message="Geometry is in a geographic CRS*")
 # suppress pandas warning of setting value in copy
 warnings.filterwarnings("ignore", message="A value is trying to be set on a copy*")
+# suppress pandas warning on regex
+warnings.filterwarnings("ignore", message="The default value of regex will change*")
 
 
 def clean_column_names(
@@ -407,19 +409,7 @@ def get_final_dataset(
         suffixes=("", "_to_delete"),
     )
     # filter to the columns that we care about for model training
-    merged_df = merged_df[
-        [
-            "facility_id",
-            "facility_name",
-            "latitude",
-            "longitude",
-            "ts",
-            "co2_mass_short_tons",
-            "cloud_cover",
-            "cog_url",
-            "geometry",
-        ]
-    ]
+    merged_df = merged_df[FINAL_COLUMNS]
     merged_df.drop_duplicates(["facility_id", "ts"], inplace=True)
     # make sure that it's in geopandas format
     merged_df = gpd.GeoDataFrame(

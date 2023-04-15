@@ -247,10 +247,10 @@ def pad_or_crop_to_size(image: np.ndarray, size: int = IMAGE_SIZE_PX) -> np.ndar
         np.ndarray:
             The padded or cropped image
     """
-    if image.shape[0] > size:
+    if image.shape[1] > size:
         # crop the image
         image = image[:, :size, :size]
-    elif image.shape[0] < size:
+    elif image.shape[1] < size:
         # pad the image
         image = np.pad(
             image,

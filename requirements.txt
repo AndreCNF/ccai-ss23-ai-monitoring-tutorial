@@ -14,3 +14,5 @@ loguru==0.6.0
 tqdm==4.65.0
 black==23.3.0
 flake8==6.0.0
+torch==2.0.0
+lightning==2.0.1.post0
