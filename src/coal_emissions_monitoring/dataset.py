@@ -1,7 +1,7 @@
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import IterableDataset, DataLoader
 from lightning import LightningDataModule
 import geopandas as gpd
 
@@ -13,20 +13,30 @@ from coal_emissions_monitoring.constants import (
     TEST_YEAR,
     TRAIN_VAL_RATIO,
 )
-from coal_emissions_monitoring.satellite_imagery import get_image_from_cog
+from coal_emissions_monitoring.satellite_imagery import (
+    get_image_from_cog,
+    is_image_too_dark,
+)
 from coal_emissions_monitoring.data_cleaning import get_final_dataset
 from coal_emissions_monitoring.ml_utils import (
     get_facility_set_mapper,
     split_data_in_sets,
 )
+from coal_emissions_monitoring.transforms import (
+    train_transforms,
+    val_transforms,
+    test_transforms,
+)
 
 
-class CoalEmissionsDataset(Dataset):
+class CoalEmissionsDataset(IterableDataset):
     def __init__(
         self,
         gdf: gpd.GeoDataFrame,
         target: str = EMISSIONS_TARGET,
         image_size: int = IMAGE_SIZE_PX,
+        max_dark_frac: float = 0.5,
+        transforms: Optional[torch.nn.Module] = None,
     ):
         """
         Dataset that gets images of coal power plants, their emissions
@@ -48,6 +58,11 @@ class CoalEmissionsDataset(Dataset):
                 The target column to predict
             image_size (int):
                 The size of the image in pixels
+            max_dark_frac (float):
+                The maximum fraction of dark pixels allowed for an image;
+                if the image has more dark pixels than this, it is skipped
+            transforms (Optional[torch.nn.Module]):
+                A PyTorch module that transforms the image
         """
         assert len(set(FINAL_COLUMNS) - set(gdf.columns)) == 0, (
             "gdf must have all columns of the following list:\n"
@@ -58,24 +73,37 @@ class CoalEmissionsDataset(Dataset):
         self.gdf = gdf
         self.target = target
         self.image_size = image_size
+        self.max_dark_frac = max_dark_frac
+        self.transforms = transforms
 
     def __len__(self):
         return len(self.gdf)
 
-    def __getitem__(self, idx):
-        row = self.gdf.iloc[idx]
-        image = get_image_from_cog(
-            cog_url=row.cog_url, geometry=row.geometry, size=self.image_size
-        )
-        image = torch.from_numpy(image).float()
-        target = torch.tensor(row[self.target]).float()
-        metadata = row.drop([self.target, "geometry", "data_set"]).to_dict()
-        metadata["ts"] = str(metadata["ts"])
-        return {
-            "image": image,
-            "target": target,
-            "metadata": metadata,
-        }
+    def __iter__(self):
+        if torch.utils.data.get_worker_info():
+            worker_total_num = torch.utils.data.get_worker_info().num_workers
+            worker_id = torch.utils.data.get_worker_info().id
+        else:
+            worker_total_num = 1
+            worker_id = 0
+        for idx in range(worker_id, len(self), worker_total_num):
+            row = self.gdf.iloc[idx]
+            image = get_image_from_cog(
+                cog_url=row.cog_url, geometry=row.geometry, size=self.image_size
+            )
+            image = torch.from_numpy(image).float()
+            if is_image_too_dark(image, max_dark_frac=self.max_dark_frac):
+                continue
+            if self.transforms is not None:
+                image = self.transforms(image).squeeze(0)
+            target = torch.tensor(row[self.target]).float()
+            metadata = row.drop([self.target, "geometry", "data_set"]).to_dict()
+            metadata["ts"] = str(metadata["ts"])
+            yield {
+                "image": image,
+                "target": target,
+                "metadata": metadata,
+            }
 
 
 class CoalEmissionsDataModule(LightningDataModule):
@@ -152,20 +180,23 @@ class CoalEmissionsDataModule(LightningDataModule):
         )
         if stage == "fit":
             self.train_dataset = CoalEmissionsDataset(
-                gdf=gdf[gdf.data_set == "train"],
+                gdf=gdf[gdf.data_set == "train"].sample(frac=1),
                 target=self.target,
                 image_size=self.image_size,
+                transforms=train_transforms,
             )
             self.val_dataset = CoalEmissionsDataset(
-                gdf=gdf[gdf.data_set == "val"],
+                gdf=gdf[gdf.data_set == "val"].sample(frac=1),
                 target=self.target,
                 image_size=self.image_size,
+                transforms=val_transforms,
             )
         elif stage == "test":
             self.test_dataset = CoalEmissionsDataset(
-                gdf=gdf[gdf.data_set == "test"],
+                gdf=gdf[gdf.data_set == "test"].sample(frac=1),
                 target=self.target,
                 image_size=self.image_size,
+                transforms=test_transforms,
             )
 
     def train_dataloader(self):
@@ -173,7 +204,6 @@ class CoalEmissionsDataModule(LightningDataModule):
             self.train_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
-            shuffle=True,
         )
 
     def val_dataloader(self):
@@ -181,7 +211,6 @@ class CoalEmissionsDataModule(LightningDataModule):
             self.val_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
-            shuffle=False,
         )
 
     def test_dataloader(self):
@@ -189,5 +218,4 @@ class CoalEmissionsDataModule(LightningDataModule):
             self.test_dataset,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
-            shuffle=False,
         )

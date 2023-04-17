@@ -10,6 +10,7 @@ from loguru import logger
 from pyproj.aoi import AreaOfInterest
 from pyproj.database import query_utm_crs_info
 from shapely.geometry.base import BaseGeometry
+import torch
 from tqdm.auto import tqdm
 
 from coal_emissions_monitoring.constants import (
@@ -293,3 +294,24 @@ def get_image_from_cog(
     # make sure that the image has the shape that we want
     image = pad_or_crop_to_size(image, size=size)
     return image
+
+
+def is_image_too_dark(image: torch.Tensor, max_dark_frac: float = 0.5) -> bool:
+    """
+    Check if an image is too dark, based on the fraction of pixels that are
+    black or NaN
+
+    Args:
+        image (torch.Tensor):
+            The image to check, with dimensions (C, H, W),
+            where C is the number of channels, H is the height and
+            W is the width
+        max_dark_frac (float):
+            The maximum fraction of pixels that can be black or NaN
+
+    Returns:
+        bool:
+            Whether the image is too dark
+    """
+    dark_frac = ((image <= 1) | (image.isnan())).sum() / image.numel()
+    return dark_frac > max_dark_frac

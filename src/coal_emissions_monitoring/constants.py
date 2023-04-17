@@ -4,7 +4,7 @@ GLOBAL_EPSG = 4326
 API_URL = "https://earth-search.aws.element84.com/v0"
 COLLECTION = "sentinel-s2-l2a-cogs"  # Sentinel-2, Level 2A, COGs
 AOI_SIZE_METERS = 3200
-IMAGE_SIZE_PX = 320
+IMAGE_SIZE_PX = 352
 CROP_SIZE_PX = 256
 START_DATE = datetime(year=2019, month=1, day=1)
 END_DATE = datetime(year=2023, month=3, day=31)
@@ -24,3 +24,4 @@ FINAL_COLUMNS = [
     "geometry",
 ]
 EMISSIONS_TARGET = "co2_mass_short_tons"
+RANDOM_TRANSFORM_PROB = 0.5
