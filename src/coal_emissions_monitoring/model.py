@@ -1,4 +1,4 @@
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 from lightning import LightningModule
 import torch
 
@@ -15,11 +15,11 @@ class CoalEmissionsModel(LightningModule):
 
     def shared_step(
         self,
-        batch: Tuple[torch.Tensor, torch.Tensor, Dict[str, Any]],
+        batch: Dict[str, Any],
         batch_idx: int,
         stage: str,
     ):
-        x, y, metadata = batch
+        x, y = batch["image"], batch["target"]
         x, y = x.float().to(self.device), y.float().to(self.device)
         y_pred = self(x)
         # calculate mean squared error loss
@@ -30,19 +30,13 @@ class CoalEmissionsModel(LightningModule):
         self.log(f"{stage}_acc", acc, on_step=True, on_epoch=True, prog_bar=True)
         return loss
 
-    def training_step(
-        self, batch: Tuple[torch.Tensor, torch.Tensor, Dict[str, Any]], batch_idx: int
-    ):
+    def training_step(self, batch: Dict[str, Any], batch_idx: int):
         return self.shared_step(batch, batch_idx, stage="train")
 
-    def validation_step(
-        self, batch: Tuple[torch.Tensor, torch.Tensor, Dict[str, Any]], batch_idx: int
-    ):
+    def validation_step(self, batch: Dict[str, Any], batch_idx: int):
         return self.shared_step(batch, batch_idx, stage="val")
 
-    def test_step(
-        self, batch: Tuple[torch.Tensor, torch.Tensor, Dict[str, Any]], batch_idx: int
-    ):
+    def test_step(self, batch: Dict[str, Any], batch_idx: int):
         return self.shared_step(batch, batch_idx, stage="test")
 
     def configure_optimizers(self):
