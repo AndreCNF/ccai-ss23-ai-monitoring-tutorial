@@ -1,9 +1,12 @@
 from datetime import datetime
-from typing import Optional
+import os
+from typing import Optional, Union
+import backoff
 
 import geopandas as gpd
 import numpy as np
 import rasterio as rio
+from rasterio.errors import RasterioIOError
 import pandas as pd
 import pystac_client
 from loguru import logger
@@ -260,6 +263,7 @@ def pad_or_crop_to_size(image: np.ndarray, size: int = IMAGE_SIZE_PX) -> np.ndar
     return image
 
 
+@backoff.on_exception(backoff.expo, RasterioIOError, max_tries=3)
 def get_image_from_cog(
     cog_url: str, geometry: BaseGeometry, size: int = IMAGE_SIZE_PX
 ) -> np.ndarray:
@@ -294,6 +298,48 @@ def get_image_from_cog(
     # make sure that the image has the shape that we want
     image = pad_or_crop_to_size(image, size=size)
     return image
+
+
+def download_image_from_cog(
+    cog_url: str,
+    geometry: BaseGeometry,
+    size: int = IMAGE_SIZE_PX,
+    images_dir: str = "images/",
+) -> Union[str, None]:
+    """
+    Download the image from a COG, clipped to the geometry, save it
+    locally and return the path to the image
+
+    Args:
+        cog_url (str):
+            The URL to the COG
+        geometry (BaseGeometry):
+            The geometry to clip the image to
+        size (int):
+            The size to pad or crop to
+        images_dir (str):
+            The directory to save the image to
+
+    Returns:
+        Union[str, None]:
+            The path to the downloaded image. If the image
+            could not be downloaded, None is returned.
+    """
+    image_name = "_".join(cog_url.split("/")[-2:]).replace(".tif", "")
+    image_path = os.path.join(images_dir, f"{image_name}.npy")
+    if os.path.exists(image_path):
+        # image already exists in the expected location
+        return str(image_path)
+    else:
+        # download and save the image
+        os.makedirs(images_dir, exist_ok=True)
+        try:
+            image = get_image_from_cog(cog_url, geometry, size=size)
+        except RasterioIOError as e:
+            logger.warning(f"Failed to download image {cog_url}. Original error:\n{e}")
+            return None
+        np.save(image_path, image)
+        return str(image_path)
 
 
 def is_image_too_dark(image: torch.Tensor, max_dark_frac: float = 0.5) -> bool:
