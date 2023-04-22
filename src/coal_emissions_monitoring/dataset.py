@@ -97,7 +97,7 @@ class CoalEmissionsDataset(IterableDataset):
         else:
             worker_total_num = 1
             worker_id = 0
-        for idx in range(worker_id, len(self), worker_total_num):
+        for idx in range(worker_id, len(self.gdf), worker_total_num):
             row = self.gdf.iloc[idx]
             if self.use_local_images:
                 image = np.load(row.local_image_path)
