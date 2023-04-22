@@ -40,7 +40,7 @@ df = get_final_dataset(
 tqdm.pandas(desc="Downloading visual images")
 df["local_image_path"] = df.progress_apply(
     lambda row: download_image_from_cog(
-        cog_url=row.cog_url,
+        cog_url=row.visual,
         geometry=row.geometry,
         images_dir="/home/adminuser/ccai-ss23-ai-monitoring-tutorial/data/images/visual/",
     ),
