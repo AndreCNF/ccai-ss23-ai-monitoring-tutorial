@@ -6,7 +6,7 @@ import pandas as pd
 import geopandas as gpd
 import overpy
 
-from coal_emissions_monitoring.constants import GLOBAL_EPSG, FINAL_COLUMNS
+from coal_emissions_monitoring.constants import ALL_BANDS, GLOBAL_EPSG, MAIN_COLUMNS
 from coal_emissions_monitoring.satellite_imagery import create_aoi_for_plants
 
 OSM_API = overpy.Overpass()
@@ -354,7 +354,7 @@ def clean_image_metadata(df: pd.DataFrame, cog_type: str = "visual") -> pd.DataF
         df (pd.DataFrame):
             Image metadata data frame
         cog_type (str):
-            Type of COG to filter to
+            Type of COG to filter to. If "all", no filtering is done.
 
     Returns:
         df (pd.DataFrame):
@@ -364,8 +364,19 @@ def clean_image_metadata(df: pd.DataFrame, cog_type: str = "visual") -> pd.DataF
     # fix datetime column data type
     df.ts = pd.to_datetime(df.ts)
     # filter to most relevant columns
-    df.rename(columns={cog_type: "cog_url"}, inplace=True)
-    df = df[["facility_id", "ts", "cloud_cover", "cog_url"]]
+    if cog_type != "all":
+        df.rename(columns={cog_type: "cog_url"}, inplace=True)
+        df = df[["facility_id", "ts", "cloud_cover", "cog_url"]]
+    else:
+        df = df[
+            [
+                "facility_id",
+                "ts",
+                "cloud_cover",
+                "visual",
+            ]
+            + ALL_BANDS
+        ]
     return df
 
 
@@ -409,6 +420,8 @@ def get_final_dataset(
             Path to CAMPD facilities data
         campd_emissions_path (Union[str, Path]):
             Path to CAMPD emissions data
+        cog_type (str):
+            Type of COG to filter to. If "all", no filtering is done.
 
     Returns:
         gdf (gpd.GeoDataFrame):
@@ -445,7 +458,11 @@ def get_final_dataset(
         suffixes=("", "_to_delete"),
     )
     # filter to the columns that we care about for model training
-    merged_df = merged_df[FINAL_COLUMNS]
+    if cog_type != "all":
+        final_columns = MAIN_COLUMNS + ["cog_url"]
+    else:
+        final_columns = MAIN_COLUMNS + ["visual"] + ALL_BANDS
+    merged_df = merged_df[final_columns]
     merged_df.drop_duplicates(["facility_id", "ts"], inplace=True)
     # make sure that it's in geopandas format
     merged_df = gpd.GeoDataFrame(

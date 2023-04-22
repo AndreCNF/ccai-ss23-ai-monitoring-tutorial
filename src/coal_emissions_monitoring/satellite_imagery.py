@@ -1,6 +1,6 @@
 from datetime import datetime
 import os
-from typing import Optional, Union
+from typing import List, Optional, Union
 import backoff
 
 import geopandas as gpd
@@ -17,6 +17,7 @@ import torch
 from tqdm.auto import tqdm
 
 from coal_emissions_monitoring.constants import (
+    ALL_BANDS,
     AOI_SIZE_METERS,
     API_URL,
     COLLECTION,
@@ -300,10 +301,41 @@ def get_image_from_cog(
     return image
 
 
-def download_image_from_cog(
-    cog_url: str,
+def get_all_bands_image(
+    cog_urls: List[str],
     geometry: BaseGeometry,
     size: int = IMAGE_SIZE_PX,
+) -> np.ndarray:
+    """
+    Get an image that stacks all bands for a given row,
+    clipped to the geometry.
+
+    Args:
+        cog_urls (List[str]):
+            The URLs to the COGs
+        geometry (BaseGeometry):
+            The geometry to clip the image to
+        size (int):
+            The size to pad or crop to
+
+    Returns:
+        np.ndarray:
+            The stacked image
+    """
+    bands = [
+        get_image_from_cog(
+            cog_url=url, geometry=geometry, size=size
+        ).squeeze()
+        for url in cog_urls
+    ]
+    return np.stack(bands, axis=0)
+
+
+def download_image_from_cog(
+    cog_url: Union[str, List[str]],
+    geometry: BaseGeometry,
+    size: int = IMAGE_SIZE_PX,
+    cog_type: str = "visual",
     images_dir: str = "images/",
 ) -> Union[str, None]:
     """
@@ -311,12 +343,14 @@ def download_image_from_cog(
     locally and return the path to the image
 
     Args:
-        cog_url (str):
+        cog_url (Union[str, List[str]]):
             The URL to the COG
         geometry (BaseGeometry):
             The geometry to clip the image to
         size (int):
             The size to pad or crop to
+        cog_type (str):
+            The type of COG to download. Can be either "visual" or "all".
         images_dir (str):
             The directory to save the image to
 
@@ -325,7 +359,14 @@ def download_image_from_cog(
             The path to the downloaded image. If the image
             could not be downloaded, None is returned.
     """
-    image_name = "_".join(cog_url.split("/")[-2:]).replace(".tif", "")
+    if cog_type == "all":
+        assert isinstance(cog_url, list) and len(cog_url) == len(ALL_BANDS), (
+            "If cog_type is 'all', cog_url must be a list "
+            f"of length {len(ALL_BANDS)}"
+        )
+        image_name = "_".join(cog_url[0].split("/")[-2:]).replace(".tif", "")
+    else:
+        image_name = "_".join(cog_url.split("/")[-2:]).replace(".tif", "")
     lat, lon = geometry.centroid.coords[0]
     patch_name = f"{image_name}_{lat}_{lon}_{size}"
     image_path = os.path.join(images_dir, f"{patch_name}.npy")
@@ -336,7 +377,14 @@ def download_image_from_cog(
         # download and save the image
         os.makedirs(images_dir, exist_ok=True)
         try:
-            image = get_image_from_cog(cog_url, geometry, size=size)
+            if cog_type == "visual":
+                image = get_image_from_cog(
+                    cog_url=cog_url, geometry=geometry, size=size
+                )
+            elif cog_type == "all":
+                image = get_all_bands_image(
+                    cog_urls=cog_url, geometry=geometry, size=size
+                )
         except RasterioIOError as e:
             logger.warning(f"Failed to download image {cog_url}. Original error:\n{e}")
             return None

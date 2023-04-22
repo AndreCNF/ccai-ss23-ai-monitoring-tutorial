@@ -12,7 +12,7 @@ MAX_CLOUD_COVER = 1
 TRAIN_VAL_RATIO = 0.8
 TEST_YEAR = 2023
 BATCH_SIZE = 32
-FINAL_COLUMNS = [
+MAIN_COLUMNS = [
     "facility_id",
     "facility_name",
     "latitude",
@@ -20,8 +20,21 @@ FINAL_COLUMNS = [
     "ts",
     "co2_mass_short_tons",
     "cloud_cover",
-    "cog_url",
     "geometry",
+]
+ALL_BANDS = [
+    "b01",
+    "b02",
+    "b03",
+    "b04",
+    "b05",
+    "b06",
+    "b07",
+    "b08",
+    "b8a",
+    "b09",
+    "b11",
+    "b12",
 ]
 EMISSIONS_TARGET = "co2_mass_short_tons"
 RANDOM_TRANSFORM_PROB = 0.5

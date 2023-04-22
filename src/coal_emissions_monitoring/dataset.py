@@ -11,7 +11,7 @@ from tqdm.auto import tqdm
 from coal_emissions_monitoring.constants import (
     BATCH_SIZE,
     EMISSIONS_TARGET,
-    FINAL_COLUMNS,
+    MAIN_COLUMNS,
     IMAGE_SIZE_PX,
     TEST_YEAR,
     TRAIN_VAL_RATIO,
@@ -72,9 +72,9 @@ class CoalEmissionsDataset(IterableDataset):
                 Whether to use local images instead of downloading them
                 from the cloud
         """
-        assert len(set(FINAL_COLUMNS) - set(gdf.columns)) == 0, (
+        assert len(set(MAIN_COLUMNS) - set(gdf.columns)) == 0, (
             "gdf must have all columns of the following list:\n"
-            f"{FINAL_COLUMNS}\n"
+            f"{MAIN_COLUMNS}\n"
             f"Instead, gdf has the following columns:\n"
             f"{gdf.columns}"
         )
