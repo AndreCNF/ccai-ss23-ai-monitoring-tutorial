@@ -24,10 +24,10 @@ class CoalEmissionsModel(LightningModule):
         y_pred = self(x)
         # calculate mean squared error loss
         loss = self.loss(y_pred, y)
-        self.log(f"{stage}_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log(f"{stage}_loss", loss, on_epoch=True, prog_bar=True)
         # calculate emissions vs no-emissions accuracy
         acc = ((y_pred > 0) == (y > 0)).float().mean()
-        self.log(f"{stage}_acc", acc, on_step=True, on_epoch=True, prog_bar=True)
+        self.log(f"{stage}_acc", acc, on_epoch=True, prog_bar=True)
         return loss
 
     def training_step(self, batch: Dict[str, Any], batch_idx: int):

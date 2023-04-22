@@ -46,9 +46,45 @@ def clean_column_names(
     return df
 
 
+def fix_google_drive_url(url: str) -> str:
+    """
+    Fix a Google Drive URL.
+
+    Args:
+        url (str):
+            URL to fix
+
+    Returns:
+        url (str):
+            Fixed URL
+    """
+    assert url.startswith(
+        "https://drive.google.com/file/d/"
+    ), "URL must start with https://drive.google.com/file/d/"
+    return "https://drive.google.com/uc?id=" + url.split("/")[-2]
+
+
+def load_csv(path: str) -> pd.DataFrame:
+    """
+    Load a CSV file.
+
+    Args:
+        path (str):
+            Path to CSV file
+
+    Returns:
+        df (pd.DataFrame):
+            Data frame
+    """
+    if path.startswith("https://drive.google.com/file/d/"):
+        return pd.read_csv(fix_google_drive_url(path))
+    else:
+        return pd.read_csv(path)
+
+
 def load_clean_data_df(
     data_path: Union[str, Path],
-    load_func: Optional[Callable] = pd.read_csv,
+    load_func: Optional[Callable] = load_csv,
     clean_func: Optional[Callable] = clean_column_names,
 ) -> pd.DataFrame:
     """
@@ -73,7 +109,7 @@ def load_clean_data_df(
 
 def load_clean_data_gdf(
     data_path: Union[str, Path],
-    load_func: Optional[Callable] = pd.read_csv,
+    load_func: Optional[Callable] = load_csv,
     clean_func: Optional[Callable] = clean_column_names,
 ) -> gpd.GeoDataFrame:
     """
@@ -213,7 +249,7 @@ def load_clean_campd_facilities_gdf(
     """
     return load_clean_data_gdf(
         data_path=campd_facilities_path,
-        load_func=pd.read_csv,
+        load_func=load_csv,
         clean_func=clean_campd_facilities,
     )
 
@@ -254,7 +290,7 @@ def load_clean_campd_emissions_df(
     """
     return load_clean_data_df(
         data_path=campd_emissions_path,
-        load_func=pd.read_csv,
+        load_func=load_csv,
         clean_func=clean_campd_emissions,
     )
 
@@ -351,7 +387,7 @@ def load_clean_image_metadata_df(
     """
     return load_clean_data_df(
         data_path=image_metadata_path,
-        load_func=pd.read_csv,
+        load_func=load_csv,
         clean_func=lambda df: clean_image_metadata(df, cog_type=cog_type),
     )
 

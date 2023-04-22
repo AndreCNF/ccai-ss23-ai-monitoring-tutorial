@@ -90,9 +90,6 @@ class CoalEmissionsDataset(IterableDataset):
                 "local_image_path column"
             )
 
-    def __len__(self):
-        return len(self.gdf)
-
     def __iter__(self):
         if torch.utils.data.get_worker_info():
             worker_total_num = torch.utils.data.get_worker_info().num_workers
