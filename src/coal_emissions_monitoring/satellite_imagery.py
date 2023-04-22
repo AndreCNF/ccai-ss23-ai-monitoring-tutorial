@@ -326,7 +326,9 @@ def download_image_from_cog(
             could not be downloaded, None is returned.
     """
     image_name = "_".join(cog_url.split("/")[-2:]).replace(".tif", "")
-    image_path = os.path.join(images_dir, f"{image_name}.npy")
+    lat, lon = geometry.centroid.coords[0]
+    patch_name = f"{image_name}_{lat}_{lon}_{size}"
+    image_path = os.path.join(images_dir, f"{patch_name}.npy")
     if os.path.exists(image_path):
         # image already exists in the expected location
         return str(image_path)
