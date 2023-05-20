@@ -5,7 +5,6 @@ import torch
 from torch.utils.data import IterableDataset, DataLoader
 from lightning import LightningDataModule
 import geopandas as gpd
-from rasterio.errors import RasterioIOError
 from tqdm.auto import tqdm
 
 from coal_emissions_monitoring.constants import (
@@ -21,7 +20,10 @@ from coal_emissions_monitoring.satellite_imagery import (
     get_image_from_cog,
     is_image_too_dark,
 )
-from coal_emissions_monitoring.data_cleaning import get_final_dataset
+from coal_emissions_monitoring.data_cleaning import (
+    get_final_dataset,
+    load_final_dataset,
+)
 from coal_emissions_monitoring.ml_utils import (
     get_facility_set_mapper,
     split_data_in_sets,
@@ -123,9 +125,10 @@ class CoalEmissionsDataset(IterableDataset):
 class CoalEmissionsDataModule(LightningDataModule):
     def __init__(
         self,
-        image_metadata_path: Union[str, Path],
-        campd_facilities_path: Union[str, Path],
-        campd_emissions_path: Union[str, Path],
+        final_dataset_path: Optional[Union[str, Path]] = None,
+        image_metadata_path: Optional[Union[str, Path]] = None,
+        campd_facilities_path: Optional[Union[str, Path]] = None,
+        campd_emissions_path: Optional[Union[str, Path]] = None,
         target: str = EMISSIONS_TARGET,
         image_size: int = IMAGE_SIZE_PX,
         train_val_ratio: float = TRAIN_VAL_RATIO,
@@ -166,6 +169,7 @@ class CoalEmissionsDataModule(LightningDataModule):
                 The number of workers to use for loading data
         """
         super().__init__()
+        self.final_dataset_path = final_dataset_path
         self.image_metadata_path = image_metadata_path
         self.campd_facilities_path = campd_facilities_path
         self.campd_emissions_path = campd_emissions_path
@@ -186,14 +190,17 @@ class CoalEmissionsDataModule(LightningDataModule):
             stage (str):
                 The stage of the setup
         """
-        gdf = get_final_dataset(
-            image_metadata_path=self.image_metadata_path,
-            campd_facilities_path=self.campd_facilities_path,
-            campd_emissions_path=self.campd_emissions_path,
-        )
-        if self.predownload_images:
+        if self.final_dataset_path is not None:
+            self.gdf = load_final_dataset(self.final_dataset_path)
+        else:
+            self.gdf = get_final_dataset(
+                image_metadata_path=self.image_metadata_path,
+                campd_facilities_path=self.campd_facilities_path,
+                campd_emissions_path=self.campd_emissions_path,
+            )
+        if self.predownload_images and "local_image_path" not in self.gdf.columns:
             tqdm.pandas(desc="Downloading images")
-            gdf["local_image_path"] = gdf.progress_apply(
+            self.gdf["local_image_path"] = self.gdf.progress_apply(
                 lambda row: download_image_from_cog(
                     cog_url=row.cog_url,
                     geometry=row.geometry,
@@ -203,12 +210,12 @@ class CoalEmissionsDataModule(LightningDataModule):
                 axis=1,
             )
             # skip rows where the image could not be downloaded
-            gdf = gdf[~gdf.local_image_path.isna()]
+            self.gdf = self.gdf[~self.gdf.local_image_path.isna()]
         facility_set_mapper = get_facility_set_mapper(
             campd_facilities_path=self.campd_facilities_path,
             train_val_ratio=self.train_val_ratio,
         )
-        gdf["data_set"] = gdf.apply(
+        self.gdf["data_set"] = self.gdf.apply(
             lambda row: split_data_in_sets(
                 row=row, data_set_mapper=facility_set_mapper, test_year=self.test_year
             ),
@@ -216,14 +223,14 @@ class CoalEmissionsDataModule(LightningDataModule):
         )
         if stage == "fit":
             self.train_dataset = CoalEmissionsDataset(
-                gdf=gdf[gdf.data_set == "train"].sample(frac=1),
+                gdf=self.gdf[self.gdf.data_set == "train"].sample(frac=1),
                 target=self.target,
                 image_size=self.image_size,
                 transforms=train_transforms,
                 use_local_images=self.predownload_images,
             )
             self.val_dataset = CoalEmissionsDataset(
-                gdf=gdf[gdf.data_set == "val"].sample(frac=1),
+                gdf=self.gdf[self.gdf.data_set == "val"].sample(frac=1),
                 target=self.target,
                 image_size=self.image_size,
                 transforms=val_transforms,
@@ -231,7 +238,7 @@ class CoalEmissionsDataModule(LightningDataModule):
             )
         elif stage == "test":
             self.test_dataset = CoalEmissionsDataset(
-                gdf=gdf[gdf.data_set == "test"].sample(frac=1),
+                gdf=self.gdf[self.gdf.data_set == "test"].sample(frac=1),
                 target=self.target,
                 image_size=self.image_size,
                 transforms=test_transforms,

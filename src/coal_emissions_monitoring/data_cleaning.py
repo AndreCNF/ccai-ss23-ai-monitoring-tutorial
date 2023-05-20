@@ -471,3 +471,28 @@ def get_final_dataset(
         crs=f"EPSG:{GLOBAL_EPSG}",
     )
     return merged_df
+
+
+def load_final_dataset(final_dataset_path: Union[str, Path]) -> gpd.GeoDataFrame:
+    """
+    Load the final dataset that has the facility and image metadata, as well as
+    the emissions data that we'll train models on.
+
+    Args:
+        final_dataset_path (Union[str, Path]):
+            Path to the final dataset
+
+    Returns:
+        gdf (gpd.GeoDataFrame):
+            Final dataset that has the facility and image metadata, as well as
+            the emissions data that we'll train models on
+    """
+    return load_clean_data_df(
+        data_path=final_dataset_path,
+        load_func=load_csv,
+        clean_func=lambda df: gpd.GeoDataFrame(
+            df,
+            geometry=df.geometry,
+            crs=f"EPSG:{GLOBAL_EPSG}",
+        ),
+    )
