@@ -11,7 +11,7 @@ class CoalEmissionsModel(LightningModule):
         self.loss = torch.nn.MSELoss()
 
     def forward(self, x):
-        return self.model(x)
+        return self.model(x).squeeze()
 
     def shared_step(
         self,
