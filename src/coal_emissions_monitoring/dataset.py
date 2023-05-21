@@ -16,7 +16,7 @@ from coal_emissions_monitoring.constants import (
     TRAIN_VAL_RATIO,
 )
 from coal_emissions_monitoring.satellite_imagery import (
-    download_image_from_cog,
+    fetch_image_path_from_cog,
     get_image_from_cog,
     is_image_too_dark,
 )
@@ -135,6 +135,7 @@ class CoalEmissionsDataModule(LightningDataModule):
         test_year: int = TEST_YEAR,
         batch_size: int = BATCH_SIZE,
         predownload_images: bool = False,
+        download_missing_images: bool = False,
         images_dir: str = "images/",
         num_workers: int = 0,
     ):
@@ -163,6 +164,9 @@ class CoalEmissionsDataModule(LightningDataModule):
             predownload_images (bool):
                 Whether to pre-download images from the cloud or load each
                 one on the fly
+            download_missing_images (bool):
+                Whether to download images that are missing from the
+                images_dir path
             images_dir (str):
                 The directory to save images to if predownload_images is True
             num_workers (int):
@@ -179,6 +183,7 @@ class CoalEmissionsDataModule(LightningDataModule):
         self.test_year = test_year
         self.batch_size = batch_size
         self.predownload_images = predownload_images
+        self.download_missing_images = download_missing_images
         self.images_dir = images_dir
         self.num_workers = num_workers
 
@@ -201,11 +206,12 @@ class CoalEmissionsDataModule(LightningDataModule):
         if self.predownload_images and "local_image_path" not in self.gdf.columns:
             tqdm.pandas(desc="Downloading images")
             self.gdf["local_image_path"] = self.gdf.progress_apply(
-                lambda row: download_image_from_cog(
+                lambda row: fetch_image_path_from_cog(
                     cog_url=row.cog_url,
                     geometry=row.geometry,
                     size=self.image_size,
                     images_dir=self.images_dir,
+                    download_missing_images=self.download_missing_images,
                 ),
                 axis=1,
             )

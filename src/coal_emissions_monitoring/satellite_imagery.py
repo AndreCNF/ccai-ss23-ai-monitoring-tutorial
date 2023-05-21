@@ -323,24 +323,23 @@ def get_all_bands_image(
             The stacked image
     """
     bands = [
-        get_image_from_cog(
-            cog_url=url, geometry=geometry, size=size
-        ).squeeze()
+        get_image_from_cog(cog_url=url, geometry=geometry, size=size).squeeze()
         for url in cog_urls
     ]
     return np.stack(bands, axis=0)
 
 
-def download_image_from_cog(
+def fetch_image_path_from_cog(
     cog_url: Union[str, List[str]],
     geometry: BaseGeometry,
     size: int = IMAGE_SIZE_PX,
     cog_type: str = "visual",
     images_dir: str = "images/",
+    download_missing_images: bool = False,
 ) -> Union[str, None]:
     """
-    Download the image from a COG, clipped to the geometry, save it
-    locally and return the path to the image
+    Fetch the image path from a COG; if download_missing_images is True,
+    the image will be downloaded if it does not exist.
 
     Args:
         cog_url (Union[str, List[str]]):
@@ -353,11 +352,13 @@ def download_image_from_cog(
             The type of COG to download. Can be either "visual" or "all".
         images_dir (str):
             The directory to save the image to
+        download_missing_images (bool):
+            Whether to download the image if it does not exist
 
     Returns:
         Union[str, None]:
             The path to the downloaded image. If the image
-            could not be downloaded, None is returned.
+            doesn't exist or could not be downloaded, None is returned.
     """
     if cog_type == "all":
         assert isinstance(cog_url, list) and len(cog_url) == len(ALL_BANDS), (
@@ -374,22 +375,28 @@ def download_image_from_cog(
         # image already exists in the expected location
         return str(image_path)
     else:
-        # download and save the image
-        os.makedirs(images_dir, exist_ok=True)
-        try:
-            if cog_type == "visual":
-                image = get_image_from_cog(
-                    cog_url=cog_url, geometry=geometry, size=size
-                )
-            elif cog_type == "all":
-                image = get_all_bands_image(
-                    cog_urls=cog_url, geometry=geometry, size=size
-                )
-        except RasterioIOError as e:
-            logger.warning(f"Failed to download image {cog_url}. Original error:\n{e}")
+        if not download_missing_images:
+            # image does not exist and we don't want to download it
             return None
-        np.save(image_path, image)
-        return str(image_path)
+        else:
+            # download and save the image
+            os.makedirs(images_dir, exist_ok=True)
+            try:
+                if cog_type == "visual":
+                    image = get_image_from_cog(
+                        cog_url=cog_url, geometry=geometry, size=size
+                    )
+                elif cog_type == "all":
+                    image = get_all_bands_image(
+                        cog_urls=cog_url, geometry=geometry, size=size
+                    )
+            except RasterioIOError as e:
+                logger.warning(
+                    f"Failed to download image {cog_url}. Original error:\n{e}"
+                )
+                return None
+            np.save(image_path, image)
+            return str(image_path)
 
 
 def is_image_too_dark(image: torch.Tensor, max_dark_frac: float = 0.5) -> bool:
