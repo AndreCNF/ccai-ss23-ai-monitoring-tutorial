@@ -473,6 +473,29 @@ def get_final_dataset(
     return merged_df
 
 
+def clean_final_dataset(df: pd.DataFrame) -> gpd.GeoDataFrame:
+    """
+    Clean the final dataset that has the facility and image metadata, as well as
+    the emissions data that we'll train models on.
+
+    Args:
+        df (pd.DataFrame):
+            Final dataset that has the facility and image metadata, as well as
+            the emissions data that we'll train models on
+
+    Returns:
+        gdf (gpd.GeoDataFrame):
+            Cleaned final dataset that has the facility and image metadata, as
+            well as the emissions data that we'll train models on
+    """
+    # fix datetime column data type
+    df.ts = pd.to_datetime(df.ts)
+    # fix geometry column data type
+    df.geometry = gpd.GeoSeries.from_wkt(df.geometry)
+    gdf = gpd.GeoDataFrame(df, geometry=df.geometry, crs=f"EPSG:{GLOBAL_EPSG}")
+    return gdf
+
+
 def load_final_dataset(final_dataset_path: Union[str, Path]) -> gpd.GeoDataFrame:
     """
     Load the final dataset that has the facility and image metadata, as well as
@@ -490,9 +513,5 @@ def load_final_dataset(final_dataset_path: Union[str, Path]) -> gpd.GeoDataFrame
     return load_clean_data_df(
         data_path=final_dataset_path,
         load_func=load_csv,
-        clean_func=lambda df: gpd.GeoDataFrame(
-            df,
-            geometry=df.geometry,
-            crs=f"EPSG:{GLOBAL_EPSG}",
-        ),
+        clean_func=clean_final_dataset,
     )
