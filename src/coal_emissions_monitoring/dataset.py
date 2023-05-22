@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Union
+from typing import Dict, Optional, Union
 import numpy as np
 import torch
 from torch.utils.data import IterableDataset, DataLoader
@@ -202,6 +202,7 @@ class CoalEmissionsDataModule(LightningDataModule):
         self.download_missing_images = download_missing_images
         self.images_dir = images_dir
         self.num_workers = num_workers
+        self.emissions_quantiles = None
 
     def setup(self, stage: str):
         """
@@ -211,6 +212,7 @@ class CoalEmissionsDataModule(LightningDataModule):
             stage (str):
                 The stage of the setup
         """
+        # load the final dataset
         if self.final_dataset_path is not None:
             self.gdf = load_final_dataset(self.final_dataset_path)
         else:
@@ -220,6 +222,7 @@ class CoalEmissionsDataModule(LightningDataModule):
                 campd_emissions_path=self.campd_emissions_path,
             )
         if self.predownload_images:
+            # make sure that images are already downloaded
             if "local_image_path" not in self.gdf.columns:
                 tqdm.pandas(desc="Downloading images")
                 self.gdf["local_image_path"] = self.gdf.progress_apply(
@@ -235,6 +238,7 @@ class CoalEmissionsDataModule(LightningDataModule):
                 # skip rows where the image could not be downloaded
                 self.gdf = self.gdf[~self.gdf.local_image_path.isna()]
             else:
+                # make sure that the image paths are in the right directory
                 current_image_path = (
                     self.gdf.local_image_path.str.split("/")
                     .str[:-1]
@@ -245,6 +249,7 @@ class CoalEmissionsDataModule(LightningDataModule):
                     self.gdf.local_image_path = self.gdf.local_image_path.str.replace(
                         current_image_path, self.image_dir
                     )
+        # split the data into train, validation and test sets
         facility_set_mapper = get_facility_set_mapper(
             campd_facilities_path=self.campd_facilities_path,
             train_val_ratio=self.train_val_ratio,
@@ -265,6 +270,7 @@ class CoalEmissionsDataModule(LightningDataModule):
                 max_dark_frac=self.max_dark_frac,
                 max_cloud_cover_prct=self.max_cloud_cover_prct,
             )
+            self.emissions_quantiles = self.calculate_emissions_quantiles()
             self.val_dataset = CoalEmissionsDataset(
                 gdf=self.gdf[self.gdf.data_set == "val"].sample(frac=1),
                 target=self.target,
@@ -309,3 +315,17 @@ class CoalEmissionsDataModule(LightningDataModule):
 
     def test_dataloader(self):
         return self.set_dataloader("test")
+
+    def calculate_emissions_quantiles(self) -> Dict[float, float]:
+        """
+        Calculate the quantiles of the emissions for the train set.
+
+        Returns:
+            Dict[float, float]:
+                The quantiles of the emissions for the train set.
+        """
+        return (
+            self.train_dataset.gdf[self.target]
+            .quantile([0.25, 0.5, 0.75, 0.95])
+            .to_dict()
+        )

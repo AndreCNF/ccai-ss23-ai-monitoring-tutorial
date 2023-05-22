@@ -38,4 +38,11 @@ ALL_BANDS = [
     "b12",
 ]
 EMISSIONS_TARGET = "co2_mass_short_tons"
+EMISSIONS_CATEGORIES = {
+    0: "no_emissions",
+    1: "low",
+    2: "medium",
+    3: "high",
+    4: "very_high",
+}
 RANDOM_TRANSFORM_PROB = 0.5

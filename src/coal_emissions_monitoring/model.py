@@ -1,14 +1,58 @@
 from typing import Any, Dict
 from lightning import LightningModule
 import torch
+from loguru import logger
+
+from coal_emissions_monitoring.constants import EMISSIONS_CATEGORIES
+
+
+def emissions_to_category(emissions: float, quantiles: Dict[float, float]) -> int:
+    """
+    Convert emissions to a category based on quantiles. The quantiles are
+    calculated from the training data. Here's how the categories are defined:
+    - 0: no emissions
+    - 1: low emissions
+    - 2: medium emissions
+    - 3: high emissions
+    - 4: very high emissions
+
+    Args:
+        emissions (float): emissions value
+        quantiles (Dict[float, float]): quantiles to use for categorization
+
+    Returns:
+        int: category
+    """
+    if emissions <= 0:
+        return 0
+    elif emissions <= quantiles[0.25]:
+        return 1
+    elif emissions > quantiles[0.25] and emissions <= quantiles[0.75]:
+        return 2
+    elif emissions > quantiles[0.75] and emissions <= quantiles[0.95]:
+        return 3
+    else:
+        return 4
 
 
 class CoalEmissionsModel(LightningModule):
-    def __init__(self, model: torch.nn.Module, learning_rate: float = 1e-3):
+    def __init__(
+        self,
+        model: torch.nn.Module,
+        learning_rate: float = 1e-3,
+        emissions_quantiles: Dict[float, float] = None,
+    ):
         super().__init__()
         self.model = model
         self.learning_rate = learning_rate
+        self.emissions_quantiles = emissions_quantiles
         self.loss = torch.nn.MSELoss()
+
+        if self.emissions_quantiles is None:
+            logger.warning(
+                "No emissions quantiles provided, "
+                "so emissions quantile metrics will not be calculated."
+            )
 
     def forward(self, x):
         preds = self.model(x).squeeze()
@@ -27,10 +71,33 @@ class CoalEmissionsModel(LightningModule):
         y_pred = self(x)
         # calculate mean squared error loss
         loss = self.loss(y_pred, y)
-        self.log(f"{stage}_loss", loss, on_epoch=True, prog_bar=True)
+        self.log(f"{stage}_loss", loss, prog_bar=True)
         # calculate emissions vs no-emissions accuracy
-        acc = ((y_pred > 0) == (y > 0)).float().mean()
-        self.log(f"{stage}_acc", acc, on_epoch=True, prog_bar=True)
+        on_off_acc = ((y_pred > 0) == (y > 0)).float().mean()
+        self.log(f"{stage}_on_off_acc", on_off_acc, prog_bar=True)
+        if self.emissions_quantiles is not None:
+            # calculate emissions quantile metrics
+            y_cat = torch.tensor(
+                [emissions_to_category(y_i, self.emissions_quantiles) for y_i in y]
+            ).to(self.device)
+            y_pred_cat = torch.tensor(
+                [
+                    emissions_to_category(y_pred_i, self.emissions_quantiles)
+                    for y_pred_i in y_pred
+                ]
+            ).to(self.device)
+            # calculate emissions quantile aggregate accuracy
+            agg_quant_acc = (y_cat == y_pred_cat).float().mean()
+            self.log(f"{stage}_agg_quant_acc", agg_quant_acc, prog_bar=True)
+            # calculate emissions quantile per-category accuracy
+            for cat in range(EMISSIONS_CATEGORIES):
+                acc = ((y_cat == cat) & (y_pred_cat == cat)).float().mean()
+                self.log(
+                    f"{stage}_{EMISSIONS_CATEGORIES[cat]}_category_acc",
+                    acc,
+                    on_epoch=True,
+                    prog_bar=True,
+                )
         return loss
 
     def training_step(self, batch: Dict[str, Any], batch_idx: int):
