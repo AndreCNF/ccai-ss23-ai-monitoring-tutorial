@@ -247,7 +247,7 @@ class CoalEmissionsDataModule(LightningDataModule):
                 )
                 if current_image_path != self.images_dir:
                     self.gdf.local_image_path = self.gdf.local_image_path.str.replace(
-                        current_image_path, self.image_dir
+                        current_image_path, self.images_dir
                     )
         # split the data into train, validation and test sets
         facility_set_mapper = get_facility_set_mapper(
