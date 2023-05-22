@@ -30,11 +30,7 @@ from coal_emissions_monitoring.ml_utils import (
     get_facility_set_mapper,
     split_data_in_sets,
 )
-from coal_emissions_monitoring.transforms import (
-    train_transforms,
-    val_transforms,
-    test_transforms,
-)
+from coal_emissions_monitoring.transforms import transforms
 
 
 class CoalEmissionsDataset(IterableDataset):
@@ -264,7 +260,7 @@ class CoalEmissionsDataModule(LightningDataModule):
                 gdf=self.gdf[self.gdf.data_set == "train"].sample(frac=1),
                 target=self.target,
                 image_size=self.image_size,
-                transforms=train_transforms,
+                transforms=transforms["train"],
                 use_local_images=self.predownload_images,
                 max_dark_frac=self.max_dark_frac,
                 max_cloud_cover_prct=self.max_cloud_cover_prct,
@@ -273,7 +269,7 @@ class CoalEmissionsDataModule(LightningDataModule):
                 gdf=self.gdf[self.gdf.data_set == "val"].sample(frac=1),
                 target=self.target,
                 image_size=self.image_size,
-                transforms=val_transforms,
+                transforms=transforms["val"],
                 use_local_images=self.predownload_images,
                 max_dark_frac=self.max_dark_frac,
                 max_cloud_cover_prct=self.max_cloud_cover_prct,
@@ -283,29 +279,33 @@ class CoalEmissionsDataModule(LightningDataModule):
                 gdf=self.gdf[self.gdf.data_set == "test"].sample(frac=1),
                 target=self.target,
                 image_size=self.image_size,
-                transforms=test_transforms,
+                transforms=transforms["test"],
                 use_local_images=self.predownload_images,
                 max_dark_frac=self.max_dark_frac,
                 max_cloud_cover_prct=self.max_cloud_cover_prct,
             )
 
-    def train_dataloader(self):
-        return DataLoader(
-            self.train_dataset,
-            batch_size=self.batch_size,
-            num_workers=self.num_workers,
+    def set_dataloader(self, data_group: str):
+        # reshuffle the dataset
+        getattr(self, f"{data_group}_dataset").gdf = getattr(
+            self, f"{data_group}_dataset"
+        ).gdf.sample(frac=1)
+        # reset the dataloader
+        setattr(
+            self,
+            f"{data_group}_dataloader",
+            DataLoader(
+                getattr(self, f"{data_group}_dataset"),
+                batch_size=self.batch_size,
+                num_workers=self.num_workers,
+            ),
         )
+
+    def train_dataloader(self):
+        return self.set_dataloader("train")
 
     def val_dataloader(self):
-        return DataLoader(
-            self.val_dataset,
-            batch_size=self.batch_size,
-            num_workers=self.num_workers,
-        )
+        return self.set_dataloader("val")
 
     def test_dataloader(self):
-        return DataLoader(
-            self.test_dataset,
-            batch_size=self.batch_size,
-            num_workers=self.num_workers,
-        )
+        return self.set_dataloader("test")
