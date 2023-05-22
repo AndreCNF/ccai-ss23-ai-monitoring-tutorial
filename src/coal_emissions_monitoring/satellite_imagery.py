@@ -24,7 +24,7 @@ from coal_emissions_monitoring.constants import (
     END_DATE,
     GLOBAL_EPSG,
     IMAGE_SIZE_PX,
-    MAX_CLOUD_COVER,
+    MAX_CLOUD_COVER_PRCT,
     START_DATE,
 )
 
@@ -98,7 +98,7 @@ def get_aws_cog_links_from_geom(
     collection: str = COLLECTION,
     start_date: Optional[datetime] = START_DATE,
     end_date: Optional[datetime] = END_DATE,
-    max_cloud_cover: Optional[int] = MAX_CLOUD_COVER,
+    max_cloud_cover_prct: Optional[int] = MAX_CLOUD_COVER_PRCT,
     sort_by: str = "updated",
     max_items: Optional[int] = None,
     verbose: bool = True,
@@ -116,7 +116,7 @@ def get_aws_cog_links_from_geom(
             Optional start date to filter images on
         end_date (Optional[datetime]):
             Optional end date to filter images on
-        max_cloud_cover (Optional[int]):
+        max_cloud_cover_prct (Optional[int]):
             Optional maximum cloud cover to filter
             images that are too cloudy. Expressed
             as a percentage, e.g. 1 = 1%
@@ -139,21 +139,21 @@ def get_aws_cog_links_from_geom(
     # get the bounding box from the geometry
     bbox = geometry.bounds
     # specify the cloud filter
-    if max_cloud_cover == 0:
+    if max_cloud_cover_prct == 0:
         cloud_filter = "eo:cloud_cover=0"
-    elif max_cloud_cover is not None:
-        cloud_filter = f"eo:cloud_cover<={max_cloud_cover}"
+    elif max_cloud_cover_prct is not None:
+        cloud_filter = f"eo:cloud_cover<={max_cloud_cover_prct}"
     # query the STAC collection(s) in a specific bounding box and search criteria
     search = STAC_CLIENT.search(
         collections=[collection],
         bbox=bbox,
         datetime=f"{start_date.strftime('%Y-%m-%d')}/{end_date.strftime('%Y-%m-%d')}",
-        query=[cloud_filter] if max_cloud_cover is not None else None,
+        query=[cloud_filter] if max_cloud_cover_prct is not None else None,
     )
     if verbose:
         logger.info(f"Found {search.matched()} items matching the search criteria")
     items = search.get_all_items()
-    if max_cloud_cover is not None and collection == "sentinel-s2-l2a-cogs":
+    if max_cloud_cover_prct is not None and collection == "sentinel-s2-l2a-cogs":
         # some items had invalid cloud cover data and turned out very cloudy; only works for L2A
         items_valid_cloud_filter = [
             x for x in items if x.properties["sentinel:valid_cloud_cover"] == True
@@ -186,7 +186,7 @@ def get_image_metadata_for_plants(
     collection: str = COLLECTION,
     start_date: datetime = START_DATE,
     end_date: datetime = END_DATE,
-    max_cloud_cover: int = MAX_CLOUD_COVER,
+    max_cloud_cover_prct: int = MAX_CLOUD_COVER_PRCT,
     sort_by: str = "updated",
 ) -> pd.DataFrame:
     """
@@ -202,7 +202,7 @@ def get_image_metadata_for_plants(
             Start date to filter images on
         end_date (Optional[datetime]):
             End date to filter images on
-        max_cloud_cover (Optional[int]):
+        max_cloud_cover_prct (Optional[int]):
             Maximum cloud cover to filter
             images that are too cloudy. Expressed
             as a percentage, e.g. 1 = 1%
@@ -227,7 +227,7 @@ def get_image_metadata_for_plants(
             collection=collection,
             start_date=start_date,
             end_date=end_date,
-            max_cloud_cover=max_cloud_cover,
+            max_cloud_cover_prct=max_cloud_cover_prct,
             sort_by=sort_by,
             verbose=False,
         )

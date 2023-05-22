@@ -12,6 +12,8 @@ from coal_emissions_monitoring.constants import (
     EMISSIONS_TARGET,
     MAIN_COLUMNS,
     IMAGE_SIZE_PX,
+    MAX_CLOUD_COVER_PRCT,
+    MAX_DARK_FRAC,
     TEST_YEAR,
     TRAIN_VAL_RATIO,
 )
@@ -41,7 +43,8 @@ class CoalEmissionsDataset(IterableDataset):
         gdf: gpd.GeoDataFrame,
         target: str = EMISSIONS_TARGET,
         image_size: int = IMAGE_SIZE_PX,
-        max_dark_frac: float = 0.5,
+        max_dark_frac: float = MAX_DARK_FRAC,
+        max_cloud_cover_prct: int = MAX_CLOUD_COVER_PRCT,
         transforms: Optional[torch.nn.Module] = None,
         use_local_images: bool = False,
     ):
@@ -68,6 +71,9 @@ class CoalEmissionsDataset(IterableDataset):
             max_dark_frac (float):
                 The maximum fraction of dark pixels allowed for an image;
                 if the image has more dark pixels than this, it is skipped
+            max_cloud_cover_prct (int):
+                The maximum cloud cover percentage allowed for an image;
+                if the image has more cloud cover than this, it is skipped
             transforms (Optional[torch.nn.Module]):
                 A PyTorch module that transforms the image
             use_local_images (bool):
@@ -84,6 +90,7 @@ class CoalEmissionsDataset(IterableDataset):
         self.target = target
         self.image_size = image_size
         self.max_dark_frac = max_dark_frac
+        self.max_cloud_cover_prct = max_cloud_cover_prct
         self.transforms = transforms
         self.use_local_images = use_local_images
         if self.use_local_images:
@@ -108,7 +115,10 @@ class CoalEmissionsDataset(IterableDataset):
                     cog_url=row.cog_url, geometry=row.geometry, size=self.image_size
                 )
             image = torch.from_numpy(image).float()
-            if is_image_too_dark(image, max_dark_frac=self.max_dark_frac):
+            if (
+                is_image_too_dark(image, max_dark_frac=self.max_dark_frac)
+                or row.cloud_cover > self.max_cloud_cover_prct
+            ):
                 continue
             if self.transforms is not None:
                 image = self.transforms(image).squeeze(0)
@@ -134,6 +144,8 @@ class CoalEmissionsDataModule(LightningDataModule):
         train_val_ratio: float = TRAIN_VAL_RATIO,
         test_year: int = TEST_YEAR,
         batch_size: int = BATCH_SIZE,
+        max_dark_frac: float = MAX_DARK_FRAC,
+        max_cloud_cover_prct: int = MAX_CLOUD_COVER_PRCT,
         predownload_images: bool = False,
         download_missing_images: bool = False,
         images_dir: str = "images/",
@@ -161,6 +173,12 @@ class CoalEmissionsDataModule(LightningDataModule):
                 The year to use for testing
             batch_size (int):
                 The batch size, i.e. the number of samples to load at once
+            max_dark_frac (float):
+                The maximum fraction of dark pixels allowed for an image;
+                if the image has more dark pixels than this, it is skipped
+            max_cloud_cover_prct (int):
+                The maximum cloud cover percentage allowed for an image;
+                if the image has more cloud cover than this, it is skipped
             predownload_images (bool):
                 Whether to pre-download images from the cloud or load each
                 one on the fly
@@ -182,6 +200,8 @@ class CoalEmissionsDataModule(LightningDataModule):
         self.train_val_ratio = train_val_ratio
         self.test_year = test_year
         self.batch_size = batch_size
+        self.max_dark_frac = max_dark_frac
+        self.max_cloud_cover_prct = max_cloud_cover_prct
         self.predownload_images = predownload_images
         self.download_missing_images = download_missing_images
         self.images_dir = images_dir
@@ -203,20 +223,32 @@ class CoalEmissionsDataModule(LightningDataModule):
                 campd_facilities_path=self.campd_facilities_path,
                 campd_emissions_path=self.campd_emissions_path,
             )
-        if self.predownload_images and "local_image_path" not in self.gdf.columns:
-            tqdm.pandas(desc="Downloading images")
-            self.gdf["local_image_path"] = self.gdf.progress_apply(
-                lambda row: fetch_image_path_from_cog(
-                    cog_url=row.cog_url,
-                    geometry=row.geometry,
-                    size=self.image_size,
-                    images_dir=self.images_dir,
-                    download_missing_images=self.download_missing_images,
-                ),
-                axis=1,
-            )
-            # skip rows where the image could not be downloaded
-            self.gdf = self.gdf[~self.gdf.local_image_path.isna()]
+        if self.predownload_images:
+            if "local_image_path" not in self.gdf.columns:
+                tqdm.pandas(desc="Downloading images")
+                self.gdf["local_image_path"] = self.gdf.progress_apply(
+                    lambda row: fetch_image_path_from_cog(
+                        cog_url=row.cog_url,
+                        geometry=row.geometry,
+                        size=self.image_size,
+                        images_dir=self.images_dir,
+                        download_missing_images=self.download_missing_images,
+                    ),
+                    axis=1,
+                )
+                # skip rows where the image could not be downloaded
+                self.gdf = self.gdf[~self.gdf.local_image_path.isna()]
+            else:
+                current_image_path = (
+                    self.gdf.local_image_path.str.split("/")
+                    .str[:-1]
+                    .str.join("/")
+                    .iloc[0]
+                )
+                if current_image_path != self.images_dir:
+                    self.gdf.local_image_path = self.gdf.local_image_path.str.replace(
+                        current_image_path, self.image_dir
+                    )
         facility_set_mapper = get_facility_set_mapper(
             campd_facilities_path=self.campd_facilities_path,
             train_val_ratio=self.train_val_ratio,
@@ -234,6 +266,8 @@ class CoalEmissionsDataModule(LightningDataModule):
                 image_size=self.image_size,
                 transforms=train_transforms,
                 use_local_images=self.predownload_images,
+                max_dark_frac=self.max_dark_frac,
+                max_cloud_cover_prct=self.max_cloud_cover_prct,
             )
             self.val_dataset = CoalEmissionsDataset(
                 gdf=self.gdf[self.gdf.data_set == "val"].sample(frac=1),
@@ -241,6 +275,8 @@ class CoalEmissionsDataModule(LightningDataModule):
                 image_size=self.image_size,
                 transforms=val_transforms,
                 use_local_images=self.predownload_images,
+                max_dark_frac=self.max_dark_frac,
+                max_cloud_cover_prct=self.max_cloud_cover_prct,
             )
         elif stage == "test":
             self.test_dataset = CoalEmissionsDataset(
@@ -249,6 +285,8 @@ class CoalEmissionsDataModule(LightningDataModule):
                 image_size=self.image_size,
                 transforms=test_transforms,
                 use_local_images=self.predownload_images,
+                max_dark_frac=self.max_dark_frac,
+                max_cloud_cover_prct=self.max_cloud_cover_prct,
             )
 
     def train_dataloader(self):
