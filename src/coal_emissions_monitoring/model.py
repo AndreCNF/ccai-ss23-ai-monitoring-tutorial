@@ -11,7 +11,10 @@ class CoalEmissionsModel(LightningModule):
         self.loss = torch.nn.MSELoss()
 
     def forward(self, x):
-        return self.model(x).squeeze()
+        preds = self.model(x).squeeze()
+        # apply ReLU to ensure predictions are non-negative
+        preds = torch.nn.functional.relu(preds)
+        return preds
 
     def shared_step(
         self,
