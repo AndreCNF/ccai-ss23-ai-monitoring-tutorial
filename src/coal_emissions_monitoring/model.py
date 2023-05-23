@@ -25,11 +25,11 @@ def emissions_to_category(emissions: float, quantiles: Dict[float, float]) -> in
     """
     if emissions <= 0:
         return 0
-    elif emissions <= quantiles[0.25]:
+    elif emissions <= quantiles[0.3]:
         return 1
-    elif emissions > quantiles[0.25] and emissions <= quantiles[0.75]:
+    elif emissions > quantiles[0.3] and emissions <= quantiles[0.6]:
         return 2
-    elif emissions > quantiles[0.75] and emissions <= quantiles[0.95]:
+    elif emissions > quantiles[0.6] and emissions <= quantiles[0.95]:
         return 3
     else:
         return 4
@@ -91,11 +91,10 @@ class CoalEmissionsModel(LightningModule):
             self.log(f"{stage}_agg_quant_acc", agg_quant_acc, prog_bar=True)
             # calculate emissions quantile per-category accuracy
             for cat in EMISSIONS_CATEGORIES.keys():
-                acc = ((y_cat == cat) & (y_pred_cat == cat)).float().mean()
+                acc = (y_cat[y_cat == cat] == y_pred_cat[y_cat == cat]).float().mean()
                 self.log(
                     f"{stage}_{EMISSIONS_CATEGORIES[cat]}_category_acc",
                     acc,
-                    on_epoch=True,
                     prog_bar=True,
                 )
         return loss

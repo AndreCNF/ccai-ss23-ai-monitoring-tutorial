@@ -321,8 +321,4 @@ class CoalEmissionsDataModule(LightningDataModule):
             Dict[float, float]:
                 The quantiles of the emissions for the train set.
         """
-        return (
-            self.train_dataset.gdf[self.target]
-            .quantile([0.25, 0.5, 0.75, 0.95])
-            .to_dict()
-        )
+        return self.train_dataset.gdf[self.target].quantile([0.3, 0.6, 0.95]).to_dict()
