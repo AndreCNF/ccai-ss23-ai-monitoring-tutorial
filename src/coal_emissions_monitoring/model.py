@@ -90,7 +90,7 @@ class CoalEmissionsModel(LightningModule):
             agg_quant_acc = (y_cat == y_pred_cat).float().mean()
             self.log(f"{stage}_agg_quant_acc", agg_quant_acc, prog_bar=True)
             # calculate emissions quantile per-category accuracy
-            for cat in range(EMISSIONS_CATEGORIES):
+            for cat in EMISSIONS_CATEGORIES.keys():
                 acc = ((y_cat == cat) & (y_pred_cat == cat)).float().mean()
                 self.log(
                     f"{stage}_{EMISSIONS_CATEGORIES[cat]}_category_acc",
