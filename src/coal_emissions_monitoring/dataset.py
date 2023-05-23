@@ -304,6 +304,7 @@ class CoalEmissionsDataModule(LightningDataModule):
                 getattr(self, f"{data_group}_dataset"),
                 batch_size=self.batch_size,
                 num_workers=self.num_workers,
+                pin_memory=True if torch.cuda.is_available() else False,
             ),
         )
 
