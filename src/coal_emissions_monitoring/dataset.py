@@ -291,31 +291,27 @@ class CoalEmissionsDataModule(LightningDataModule):
                 max_cloud_cover_prct=self.max_cloud_cover_prct,
             )
 
-    def set_dataloader(self, data_group: str):
+    def get_dataloader(self, data_group: str):
         # reshuffle the dataset
         getattr(self, f"{data_group}_dataset").gdf = getattr(
             self, f"{data_group}_dataset"
         ).gdf.sample(frac=1)
         # reset the dataloader
-        setattr(
-            self,
-            f"{data_group}_dataloader",
-            DataLoader(
-                getattr(self, f"{data_group}_dataset"),
-                batch_size=self.batch_size,
-                num_workers=self.num_workers,
-                pin_memory=True if torch.cuda.is_available() else False,
-            ),
+        return DataLoader(
+            getattr(self, f"{data_group}_dataset"),
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            pin_memory=True if torch.cuda.is_available() else False,
         )
 
     def train_dataloader(self):
-        return self.set_dataloader("train")
+        return self.get_dataloader("train")
 
     def val_dataloader(self):
-        return self.set_dataloader("val")
+        return self.get_dataloader("val")
 
     def test_dataloader(self):
-        return self.set_dataloader("test")
+        return self.get_dataloader("test")
 
     def calculate_emissions_quantiles(self) -> Dict[float, float]:
         """
