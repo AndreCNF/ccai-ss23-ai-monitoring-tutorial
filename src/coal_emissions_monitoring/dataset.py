@@ -225,7 +225,7 @@ class CoalEmissionsDataModule(LightningDataModule):
                 campd_emissions_path=self.campd_emissions_path,
             )
         # filter out rows with too much cloud cover
-        self.gdf = self.gdf[self.gdf.cloud_cover_prct <= self.max_cloud_cover_prct]
+        self.gdf = self.gdf[self.gdf.cloud_cover <= self.max_cloud_cover_prct]
         if self.predownload_images:
             # make sure that images are already downloaded
             if "local_image_path" not in self.gdf.columns:
@@ -278,7 +278,6 @@ class CoalEmissionsDataModule(LightningDataModule):
                 transforms=get_transform(data_group="train", crop_size=self.crop_size),
                 use_local_images=self.predownload_images,
                 max_dark_frac=self.max_dark_frac,
-                max_cloud_cover_prct=self.max_cloud_cover_prct,
             )
             self.emissions_quantiles = self.calculate_emissions_quantiles()
             self.val_dataset = CoalEmissionsDataset(
@@ -288,7 +287,6 @@ class CoalEmissionsDataModule(LightningDataModule):
                 transforms=get_transform(data_group="val", crop_size=self.crop_size),
                 use_local_images=self.predownload_images,
                 max_dark_frac=self.max_dark_frac,
-                max_cloud_cover_prct=self.max_cloud_cover_prct,
             )
         elif stage == "test":
             self.test_dataset = CoalEmissionsDataset(
@@ -298,7 +296,6 @@ class CoalEmissionsDataModule(LightningDataModule):
                 transforms=get_transform(data_group="test", crop_size=self.crop_size),
                 use_local_images=self.predownload_images,
                 max_dark_frac=self.max_dark_frac,
-                max_cloud_cover_prct=self.max_cloud_cover_prct,
             )
 
     def get_dataloader(self, data_group: str):

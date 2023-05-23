@@ -113,7 +113,7 @@ class CoalEmissionsModel(LightningModule):
         return {
             "optimizer": optimizer,
             "lr_scheduler": torch.optim.lr_scheduler.ReduceLROnPlateau(
-                optimizer, mode="min", factor=0.1, patience=5
+                optimizer, mode="min", factor=0.1, patience=3
             ),
             "monitor": "val_loss",
         }
