@@ -41,7 +41,6 @@ class CoalEmissionsDataset(IterableDataset):
         target: str = EMISSIONS_TARGET,
         image_size: int = IMAGE_SIZE_PX,
         max_dark_frac: float = MAX_DARK_FRAC,
-        max_cloud_cover_prct: int = MAX_CLOUD_COVER_PRCT,
         transforms: Optional[torch.nn.Module] = None,
         use_local_images: bool = False,
     ):
@@ -68,9 +67,6 @@ class CoalEmissionsDataset(IterableDataset):
             max_dark_frac (float):
                 The maximum fraction of dark pixels allowed for an image;
                 if the image has more dark pixels than this, it is skipped
-            max_cloud_cover_prct (int):
-                The maximum cloud cover percentage allowed for an image;
-                if the image has more cloud cover than this, it is skipped
             transforms (Optional[torch.nn.Module]):
                 A PyTorch module that transforms the image
             use_local_images (bool):
@@ -87,7 +83,6 @@ class CoalEmissionsDataset(IterableDataset):
         self.target = target
         self.image_size = image_size
         self.max_dark_frac = max_dark_frac
-        self.max_cloud_cover_prct = max_cloud_cover_prct
         self.transforms = transforms
         self.use_local_images = use_local_images
         if self.use_local_images:
@@ -112,10 +107,7 @@ class CoalEmissionsDataset(IterableDataset):
                     cog_url=row.cog_url, geometry=row.geometry, size=self.image_size
                 )
             image = torch.from_numpy(image).float()
-            if (
-                is_image_too_dark(image, max_dark_frac=self.max_dark_frac)
-                or row.cloud_cover > self.max_cloud_cover_prct
-            ):
+            if is_image_too_dark(image, max_dark_frac=self.max_dark_frac):
                 continue
             if self.transforms is not None:
                 image = self.transforms(image).squeeze(0)
@@ -226,6 +218,8 @@ class CoalEmissionsDataModule(LightningDataModule):
                 campd_facilities_path=self.campd_facilities_path,
                 campd_emissions_path=self.campd_emissions_path,
             )
+        # filter out rows with too much cloud cover
+        self.gdf = self.gdf[self.gdf.cloud_cover_prct <= self.max_cloud_cover_prct]
         if self.predownload_images:
             # make sure that images are already downloaded
             if "local_image_path" not in self.gdf.columns:
