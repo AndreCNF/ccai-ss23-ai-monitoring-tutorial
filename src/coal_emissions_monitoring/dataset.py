@@ -9,6 +9,7 @@ from tqdm.auto import tqdm
 
 from coal_emissions_monitoring.constants import (
     BATCH_SIZE,
+    CROP_SIZE_PX,
     EMISSIONS_TARGET,
     MAIN_COLUMNS,
     IMAGE_SIZE_PX,
@@ -30,7 +31,7 @@ from coal_emissions_monitoring.ml_utils import (
     get_facility_set_mapper,
     split_data_in_sets,
 )
-from coal_emissions_monitoring.transforms import transforms
+from coal_emissions_monitoring.transforms import get_transform
 
 
 class CoalEmissionsDataset(IterableDataset):
@@ -137,6 +138,7 @@ class CoalEmissionsDataModule(LightningDataModule):
         campd_emissions_path: Optional[Union[str, Path]] = None,
         target: str = EMISSIONS_TARGET,
         image_size: int = IMAGE_SIZE_PX,
+        crop_size: int = CROP_SIZE_PX,
         train_val_ratio: float = TRAIN_VAL_RATIO,
         test_year: int = TEST_YEAR,
         batch_size: int = BATCH_SIZE,
@@ -163,6 +165,8 @@ class CoalEmissionsDataModule(LightningDataModule):
                 The target column to predict
             image_size (int):
                 The size of the image in pixels
+            crop_size (int):
+                The size of the crop in pixels
             train_val_ratio (float):
                 The ratio of train to validation data
             test_year (int):
@@ -193,6 +197,7 @@ class CoalEmissionsDataModule(LightningDataModule):
         self.campd_emissions_path = campd_emissions_path
         self.target = target
         self.image_size = image_size
+        self.crop_size = crop_size
         self.train_val_ratio = train_val_ratio
         self.test_year = test_year
         self.batch_size = batch_size
@@ -265,7 +270,7 @@ class CoalEmissionsDataModule(LightningDataModule):
                 gdf=self.gdf[self.gdf.data_set == "train"].sample(frac=1),
                 target=self.target,
                 image_size=self.image_size,
-                transforms=transforms["train"],
+                transforms=get_transform(data_group="train", crop_size=self.crop_size),
                 use_local_images=self.predownload_images,
                 max_dark_frac=self.max_dark_frac,
                 max_cloud_cover_prct=self.max_cloud_cover_prct,
@@ -275,7 +280,7 @@ class CoalEmissionsDataModule(LightningDataModule):
                 gdf=self.gdf[self.gdf.data_set == "val"].sample(frac=1),
                 target=self.target,
                 image_size=self.image_size,
-                transforms=transforms["val"],
+                transforms=get_transform(data_group="val", crop_size=self.crop_size),
                 use_local_images=self.predownload_images,
                 max_dark_frac=self.max_dark_frac,
                 max_cloud_cover_prct=self.max_cloud_cover_prct,
@@ -285,7 +290,7 @@ class CoalEmissionsDataModule(LightningDataModule):
                 gdf=self.gdf[self.gdf.data_set == "test"].sample(frac=1),
                 target=self.target,
                 image_size=self.image_size,
-                transforms=transforms["test"],
+                transforms=get_transform(data_group="test", crop_size=self.crop_size),
                 use_local_images=self.predownload_images,
                 max_dark_frac=self.max_dark_frac,
                 max_cloud_cover_prct=self.max_cloud_cover_prct,

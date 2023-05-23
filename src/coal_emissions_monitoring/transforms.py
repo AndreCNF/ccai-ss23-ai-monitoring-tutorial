@@ -2,23 +2,47 @@ import kornia.augmentation as K
 
 from coal_emissions_monitoring.constants import CROP_SIZE_PX, RANDOM_TRANSFORM_PROB
 
-transforms = dict(
-    train=K.AugmentationSequential(
-        K.RandomCrop(size=(CROP_SIZE_PX, CROP_SIZE_PX)),
-        K.RandomHorizontalFlip(p=RANDOM_TRANSFORM_PROB),
-        K.RandomRotation(p=RANDOM_TRANSFORM_PROB, degrees=90),
-        # TODO this contrast transform is sometimes making the image too dark
-        # consider fixing it if needing more regularization
-        # K.RandomContrast(p=RANDOM_TRANSFORM_PROB, contrast=(0.9, 1.1)),
-        data_keys=["image"],
-        same_on_batch=False,
-        keepdim=True,
-    ),
-    val=K.AugmentationSequential(
-        K.CenterCrop(size=(CROP_SIZE_PX, CROP_SIZE_PX)),
-        data_keys=["image"],
-        same_on_batch=False,
-        keepdim=True,
-    ),
-)
-transforms["test"] = transforms["val"]
+
+def get_transform(
+    data_group: str, crop_size: int = CROP_SIZE_PX
+) -> K.AugmentationSequential:
+    """
+    Get the transform for the given data group, i.e. train, val, or test.
+
+    Args:
+        data_group (str): data group
+        crop_size (int): crop size
+
+    Returns:
+        K.AugmentationSequential: transforms
+    """
+    if data_group == "train":
+        return K.AugmentationSequential(
+            K.RandomCrop(size=(crop_size, crop_size)),
+            K.RandomHorizontalFlip(p=RANDOM_TRANSFORM_PROB),
+            K.RandomRotation(p=RANDOM_TRANSFORM_PROB, degrees=90),
+            # TODO this contrast transform is sometimes making the image too dark
+            # consider fixing it if needing more regularization
+            # K.RandomContrast(p=RANDOM_TRANSFORM_PROB, contrast=(0.9, 1.1)),
+            data_keys=["image"],
+            same_on_batch=False,
+            keepdim=True,
+        )
+    elif data_group == "val":
+        return K.AugmentationSequential(
+            K.CenterCrop(size=(crop_size, crop_size)),
+            data_keys=["image"],
+            same_on_batch=False,
+            keepdim=True,
+        )
+    elif data_group == "test":
+        return K.AugmentationSequential(
+            K.CenterCrop(size=(crop_size, crop_size)),
+            data_keys=["image"],
+            same_on_batch=False,
+            keepdim=True,
+        )
+    else:
+        raise ValueError(
+            f"Invalid data group: {data_group}." "Expected one of: train, val, test."
+        )
