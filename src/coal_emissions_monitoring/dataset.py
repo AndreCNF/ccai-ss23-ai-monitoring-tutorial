@@ -24,6 +24,7 @@ from coal_emissions_monitoring.satellite_imagery import (
     is_image_too_dark,
 )
 from coal_emissions_monitoring.data_cleaning import (
+    filter_to_cooling_tower_plants,
     get_final_dataset,
     load_final_dataset,
 )
@@ -139,6 +140,7 @@ class CoalEmissionsDataModule(LightningDataModule):
         predownload_images: bool = False,
         download_missing_images: bool = False,
         images_dir: str = "images/",
+        must_have_cooling_tower: bool = False,
         num_workers: int = 0,
     ):
         """
@@ -179,6 +181,9 @@ class CoalEmissionsDataModule(LightningDataModule):
                 images_dir path
             images_dir (str):
                 The directory to save images to if predownload_images is True
+            must_have_cooling_tower (bool):
+                Whether to only include images of power plants that have
+                cooling tower(s)
             num_workers (int):
                 The number of workers to use for loading data
         """
@@ -198,6 +203,7 @@ class CoalEmissionsDataModule(LightningDataModule):
         self.predownload_images = predownload_images
         self.download_missing_images = download_missing_images
         self.images_dir = images_dir
+        self.must_have_cooling_tower = must_have_cooling_tower
         self.num_workers = num_workers
         self.emissions_quantiles = None
 
@@ -248,6 +254,11 @@ class CoalEmissionsDataModule(LightningDataModule):
                     self.gdf.local_image_path = self.gdf.local_image_path.str.replace(
                         current_image_path, self.images_dir
                     )
+        if self.must_have_cooling_tower:
+            self.gdf = filter_to_cooling_tower_plants(
+                gdf=self.gdf,
+                campd_facilities_path=self.campd_facilities_path,
+            )
         # split the data into train, validation and test sets
         facility_set_mapper = get_facility_set_mapper(
             campd_facilities_path=self.campd_facilities_path,

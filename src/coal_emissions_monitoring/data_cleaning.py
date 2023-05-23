@@ -346,6 +346,40 @@ def load_osm_data(
     return gdf
 
 
+def filter_to_cooling_tower_plants(
+    gdf: gpd.GeoDataFrame,
+    campd_facilities_path: Union[str, Path],
+) -> gpd.GeoDataFrame:
+    """
+    Filter data to plants with cooling towers.
+
+    Args:
+        gdf (gpd.GeoDataFrame):
+            Data to be filtered
+        campd_facilities_path (Union[str, Path]):
+            Path to CAMPD facilities data
+
+    Returns:
+        gdf (gpd.GeoDataFrame):
+            Filtered data
+    """
+    # load the CAMPD facilities data
+    campd_facilities_gdf = load_clean_campd_facilities_gdf(campd_facilities_path)
+    # load the OSM data
+    osm_gdf = load_osm_data()
+    # spatial join
+    campd_ndt_gdf = gpd.sjoin_nearest(
+        campd_facilities_gdf,
+        osm_gdf,
+        how="inner",
+        distance_col="distances",
+        max_distance=0.01,
+    )
+    # filter to plants with cooling towers
+    gdf = gdf[gdf.facility_id.isin(campd_ndt_gdf.facility_id)]
+    return gdf
+
+
 def clean_image_metadata(df: pd.DataFrame, cog_type: str = "visual") -> pd.DataFrame:
     """
     Clean the image metadata data frame.
