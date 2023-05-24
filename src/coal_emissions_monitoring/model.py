@@ -203,6 +203,7 @@ class CoalEmissionsModel(LightningModule):
         metrics = self.calculate_categorical_metrics(
             preds=torch.tensor(preds), targets=torch.tensor(targets)
         )
+        metrics = {f"{stage}_{k}": v for k, v in metrics.items()}
         self.log_dict(metrics, on_step=False, on_epoch=True, prog_bar=True)
         # reset lists of predictions and targets
         setattr(self, f"{stage}_step_preds", [])
