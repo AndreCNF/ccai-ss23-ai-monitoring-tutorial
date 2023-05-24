@@ -104,7 +104,7 @@ class CoalEmissionsModel(LightningModule):
             )
 
     def forward(self, x):
-        preds = self.model(x).squeeze()
+        preds = self.model(x).squeeze(-1)
         # apply ReLU to ensure predictions are non-negative
         preds = torch.nn.functional.relu(preds)
         return preds
@@ -167,6 +167,9 @@ class CoalEmissionsModel(LightningModule):
         batch_idx: int,
         stage: str,
     ):
+        if len(batch["image"].shape) == 0:
+            # avoid iteration over a 0-d array error
+            return dict()
         metrics = dict()
         x, y = batch["image"], batch["target"]
         x, y = x.float().to(self.device), y.float().to(self.device)
