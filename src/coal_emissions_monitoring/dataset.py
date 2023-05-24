@@ -13,6 +13,7 @@ from coal_emissions_monitoring.constants import (
     EMISSIONS_TARGET,
     MAIN_COLUMNS,
     IMAGE_SIZE_PX,
+    MAX_BRIGHT_MEAN,
     MAX_CLOUD_COVER_PRCT,
     MAX_DARK_FRAC,
     TEST_YEAR,
@@ -21,6 +22,7 @@ from coal_emissions_monitoring.constants import (
 from coal_emissions_monitoring.satellite_imagery import (
     fetch_image_path_from_cog,
     get_image_from_cog,
+    is_image_too_bright,
     is_image_too_dark,
 )
 from coal_emissions_monitoring.data_cleaning import (
@@ -42,6 +44,7 @@ class CoalEmissionsDataset(IterableDataset):
         target: str = EMISSIONS_TARGET,
         image_size: int = IMAGE_SIZE_PX,
         max_dark_frac: float = MAX_DARK_FRAC,
+        max_mean_val: float = MAX_BRIGHT_MEAN,
         transforms: Optional[torch.nn.Module] = None,
         use_local_images: bool = False,
     ):
@@ -68,6 +71,9 @@ class CoalEmissionsDataset(IterableDataset):
             max_dark_frac (float):
                 The maximum fraction of dark pixels allowed for an image;
                 if the image has more dark pixels than this, it is skipped
+            max_mean_val (float):
+                The maximum mean value allowed for an image; if the image
+                has a higher mean value than this, it is skipped
             transforms (Optional[torch.nn.Module]):
                 A PyTorch module that transforms the image
             use_local_images (bool):
@@ -84,6 +90,7 @@ class CoalEmissionsDataset(IterableDataset):
         self.target = target
         self.image_size = image_size
         self.max_dark_frac = max_dark_frac
+        self.max_mean_val = max_mean_val
         self.transforms = transforms
         self.use_local_images = use_local_images
         if self.use_local_images:
@@ -108,7 +115,9 @@ class CoalEmissionsDataset(IterableDataset):
                     cog_url=row.cog_url, geometry=row.geometry, size=self.image_size
                 )
             image = torch.from_numpy(image).float()
-            if is_image_too_dark(image, max_dark_frac=self.max_dark_frac):
+            if is_image_too_dark(
+                image, max_dark_frac=self.max_dark_frac
+            ) or is_image_too_bright(image, max_mean_val=self.max_mean_val):
                 continue
             if self.transforms is not None:
                 image = self.transforms(image).squeeze(0)
@@ -136,6 +145,7 @@ class CoalEmissionsDataModule(LightningDataModule):
         test_year: int = TEST_YEAR,
         batch_size: int = BATCH_SIZE,
         max_dark_frac: float = MAX_DARK_FRAC,
+        max_mean_val: float = MAX_BRIGHT_MEAN,
         max_cloud_cover_prct: int = MAX_CLOUD_COVER_PRCT,
         predownload_images: bool = False,
         download_missing_images: bool = False,
@@ -170,6 +180,9 @@ class CoalEmissionsDataModule(LightningDataModule):
             max_dark_frac (float):
                 The maximum fraction of dark pixels allowed for an image;
                 if the image has more dark pixels than this, it is skipped
+            max_mean_val (float):
+                The maximum mean value allowed for an image; if the image
+                has a higher mean value than this, it is skipped
             max_cloud_cover_prct (int):
                 The maximum cloud cover percentage allowed for an image;
                 if the image has more cloud cover than this, it is skipped
@@ -199,6 +212,7 @@ class CoalEmissionsDataModule(LightningDataModule):
         self.test_year = test_year
         self.batch_size = batch_size
         self.max_dark_frac = max_dark_frac
+        self.max_mean_val = max_mean_val
         self.max_cloud_cover_prct = max_cloud_cover_prct
         self.predownload_images = predownload_images
         self.download_missing_images = download_missing_images
@@ -278,6 +292,7 @@ class CoalEmissionsDataModule(LightningDataModule):
                 transforms=get_transform(data_group="train", crop_size=self.crop_size),
                 use_local_images=self.predownload_images,
                 max_dark_frac=self.max_dark_frac,
+                max_mean_val=self.max_mean_val,
             )
             self.emissions_quantiles = self.calculate_emissions_quantiles()
             self.val_dataset = CoalEmissionsDataset(
@@ -287,6 +302,7 @@ class CoalEmissionsDataModule(LightningDataModule):
                 transforms=get_transform(data_group="val", crop_size=self.crop_size),
                 use_local_images=self.predownload_images,
                 max_dark_frac=self.max_dark_frac,
+                max_mean_val=self.max_mean_val,
             )
         elif stage == "test":
             self.test_dataset = CoalEmissionsDataset(
@@ -296,6 +312,7 @@ class CoalEmissionsDataModule(LightningDataModule):
                 transforms=get_transform(data_group="test", crop_size=self.crop_size),
                 use_local_images=self.predownload_images,
                 max_dark_frac=self.max_dark_frac,
+                max_mean_val=self.max_mean_val,
             )
 
     def get_dataloader(self, data_group: str):

@@ -24,7 +24,9 @@ from coal_emissions_monitoring.constants import (
     END_DATE,
     GLOBAL_EPSG,
     IMAGE_SIZE_PX,
+    MAX_BRIGHT_MEAN,
     MAX_CLOUD_COVER_PRCT,
+    MAX_DARK_FRAC,
     START_DATE,
 )
 
@@ -399,7 +401,9 @@ def fetch_image_path_from_cog(
             return str(image_path)
 
 
-def is_image_too_dark(image: torch.Tensor, max_dark_frac: float = 0.5) -> bool:
+def is_image_too_dark(
+    image: torch.Tensor, max_dark_frac: float = MAX_DARK_FRAC
+) -> bool:
     """
     Check if an image is too dark, based on the fraction of pixels that are
     black or NaN
@@ -418,3 +422,23 @@ def is_image_too_dark(image: torch.Tensor, max_dark_frac: float = 0.5) -> bool:
     """
     dark_frac = ((image <= 1) | (image.isnan())).sum() / image.numel()
     return dark_frac > max_dark_frac
+
+
+def is_image_too_bright(image: torch.Tensor, max_mean_val: MAX_BRIGHT_MEAN) -> bool:
+    """
+    Check if the image is too bright, such as because of clouds or snow, based
+    on the mean value of the image
+
+    Args:
+        image (torch.Tensor):
+            The image to check, with dimensions (C, H, W),
+            where C is the number of channels, H is the height and
+            W is the width
+        max_mean_val (float):
+            The maximum mean value of the image
+
+    Returns:
+        bool:
+            Whether the image is too bright
+    """
+    return image.mean() > max_mean_val
