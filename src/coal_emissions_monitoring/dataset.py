@@ -284,6 +284,8 @@ class CoalEmissionsDataModule(LightningDataModule):
             ),
             axis=1,
         )
+        self.emissions_quantiles = self.calculate_emissions_quantiles(self.gdf)
+        self.gdf = self.normalise_emissions(self.gdf, self.emissions_quantiles)
         if stage == "fit":
             self.train_dataset = CoalEmissionsDataset(
                 gdf=self.gdf[self.gdf.data_set == "train"].sample(frac=1),
@@ -294,7 +296,6 @@ class CoalEmissionsDataModule(LightningDataModule):
                 max_dark_frac=self.max_dark_frac,
                 max_mean_val=self.max_mean_val,
             )
-            self.emissions_quantiles = self.calculate_emissions_quantiles()
             self.val_dataset = CoalEmissionsDataset(
                 gdf=self.gdf[self.gdf.data_set == "val"].sample(frac=1),
                 target=self.target,
@@ -337,12 +338,55 @@ class CoalEmissionsDataModule(LightningDataModule):
     def test_dataloader(self):
         return self.get_dataloader("test")
 
-    def calculate_emissions_quantiles(self) -> Dict[float, float]:
+    def calculate_emissions_quantiles(
+        self, gdf: Optional[gpd.GeoDataFrame] = None
+    ) -> Dict[float, float]:
         """
         Calculate the quantiles of the emissions for the train set.
+        This needs to be run after the facilities have been mapped to
+        train, validation and test sets, using the `get_facility_set_mapper`
+        function.
+
+        Args:
+            gdf (Optional[gpd.GeoDataFrame]):
+                The dataset to calculate the quantiles for. If None,
+                the dataset's geodataframe is used.
 
         Returns:
             Dict[float, float]:
                 The quantiles of the emissions for the train set.
         """
-        return self.train_dataset.gdf[self.target].quantile([0.3, 0.6, 0.95]).to_dict()
+        if gdf is None:
+            gdf = self.gdf
+        return (
+            gdf.loc[(gdf.data_set == "train") & (gdf[self.target] > 0), self.target]
+            .quantile([0.3, 0.6, 0.99])
+            .to_dict()
+        )
+
+    def normalise_emissions(
+        self,
+        gdf: Optional[gpd.GeoDataFrame] = None,
+        emissions_quantiles: Optional[Dict[float, float]] = None,
+    ) -> gpd.GeoDataFrame:
+        """
+        Normalise the emissions by diving by the 99th quantile of the
+        emissions from the train set.
+
+        Args:
+            gdf (Optional[gpd.GeoDataFrame]):
+                The dataset to normalise. If None,
+                the dataset's geodataframe is used.
+            emissions_quantiles (Optional[Dict[float, float]]):
+                The quantiles of the emissions for the train set.
+
+        Returns:
+            gpd.GeoDataFrame:
+                The normalised dataset.
+        """
+        if gdf is None:
+            gdf = self.gdf
+        if emissions_quantiles is None:
+            emissions_quantiles = self.emissions_quantiles
+        gdf[self.target] = gdf[self.target] / emissions_quantiles[0.99]
+        return gdf

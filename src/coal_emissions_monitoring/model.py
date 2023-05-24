@@ -6,7 +6,9 @@ from loguru import logger
 from coal_emissions_monitoring.constants import EMISSIONS_CATEGORIES
 
 
-def emissions_to_category(emissions: float, quantiles: Dict[float, float]) -> int:
+def emissions_to_category(
+    emissions: float, quantiles: Dict[float, float], rescale: bool = False
+) -> int:
     """
     Convert emissions to a category based on quantiles. The quantiles are
     calculated from the training data. Here's how the categories are defined:
@@ -19,17 +21,21 @@ def emissions_to_category(emissions: float, quantiles: Dict[float, float]) -> in
     Args:
         emissions (float): emissions value
         quantiles (Dict[float, float]): quantiles to use for categorization
+        rescale (bool): whether to rescale emissions to the original range,
+            using the 99th quantile as the maximum value
 
     Returns:
         int: category
     """
+    if rescale:
+        emissions = emissions * quantiles[0.99]
     if emissions <= 0:
         return 0
     elif emissions <= quantiles[0.3]:
         return 1
     elif emissions > quantiles[0.3] and emissions <= quantiles[0.6]:
         return 2
-    elif emissions > quantiles[0.6] and emissions <= quantiles[0.95]:
+    elif emissions > quantiles[0.6] and emissions <= quantiles[0.99]:
         return 3
     else:
         return 4
@@ -47,6 +53,12 @@ class CoalEmissionsModel(LightningModule):
         self.learning_rate = learning_rate
         self.emissions_quantiles = emissions_quantiles
         self.loss = torch.nn.MSELoss()
+        self.train_step_preds = []
+        self.train_step_targets = []
+        self.val_step_preds = []
+        self.val_step_targets = []
+        self.test_step_preds = []
+        self.test_step_targets = []
 
         if self.emissions_quantiles is None:
             logger.warning(
@@ -60,44 +72,72 @@ class CoalEmissionsModel(LightningModule):
         preds = torch.nn.functional.relu(preds)
         return preds
 
+    def calculate_metrics(
+        self, preds: torch.Tensor, targets: torch.Tensor
+    ) -> Dict[str, float]:
+        """
+        Calculate metrics for a batch of predictions and targets.
+
+        Args:
+            preds (torch.Tensor): predictions
+            targets (torch.Tensor): targets
+
+        Returns:
+            Dict[str, float]: metrics
+        """
+        metrics = dict()
+        # calculate mean squared error loss
+        metrics["loss"] = self.loss(preds, targets)
+        # calculate emissions vs no-emissions accuracy
+        metrics["on_off_acc"] = ((preds > 0) == (targets > 0)).float().mean()
+        if self.emissions_quantiles is not None:
+            # calculate emissions quantile metrics
+            targets_cat = torch.tensor(
+                [
+                    emissions_to_category(y_i, self.emissions_quantiles, rescale=True)
+                    for y_i in targets
+                ]
+            ).to(self.device)
+            preds_cat = torch.tensor(
+                [
+                    emissions_to_category(
+                        y_pred_i, self.emissions_quantiles, rescale=True
+                    )
+                    for y_pred_i in preds
+                ]
+            ).to(self.device)
+            # calculate emissions quantile aggregate accuracy
+            metrics["agg_quant_acc"] = (preds_cat == targets_cat).float().mean()
+            # calculate emissions recall per category
+            for cat in EMISSIONS_CATEGORIES.keys():
+                metrics[f"{EMISSIONS_CATEGORIES[cat]}_category_recall"] = (
+                    (targets_cat[targets_cat == cat] == preds_cat[targets_cat == cat])
+                    .float()
+                    .mean()
+                )
+        return metrics
+
     def shared_step(
         self,
         batch: Dict[str, Any],
         batch_idx: int,
         stage: str,
     ):
+        metrics = dict()
         x, y = batch["image"], batch["target"]
         x, y = x.float().to(self.device), y.float().to(self.device)
         y_pred = self(x)
-        # calculate mean squared error loss
-        loss = self.loss(y_pred, y)
-        self.log(f"{stage}_loss", loss, prog_bar=True)
-        # calculate emissions vs no-emissions accuracy
-        on_off_acc = ((y_pred > 0) == (y > 0)).float().mean()
-        self.log(f"{stage}_on_off_acc", on_off_acc, prog_bar=True)
-        if self.emissions_quantiles is not None:
-            # calculate emissions quantile metrics
-            y_cat = torch.tensor(
-                [emissions_to_category(y_i, self.emissions_quantiles) for y_i in y]
-            ).to(self.device)
-            y_pred_cat = torch.tensor(
-                [
-                    emissions_to_category(y_pred_i, self.emissions_quantiles)
-                    for y_pred_i in y_pred
-                ]
-            ).to(self.device)
-            # calculate emissions quantile aggregate accuracy
-            agg_quant_acc = (y_cat == y_pred_cat).float().mean()
-            self.log(f"{stage}_agg_quant_acc", agg_quant_acc, prog_bar=True)
-            # calculate emissions quantile per-category accuracy
-            for cat in EMISSIONS_CATEGORIES.keys():
-                acc = (y_cat[y_cat == cat] == y_pred_cat[y_cat == cat]).float().mean()
-                self.log(
-                    f"{stage}_{EMISSIONS_CATEGORIES[cat]}_category_acc",
-                    acc,
-                    prog_bar=True,
-                )
-        return loss
+        metrics = self.calculate_metrics(preds=y_pred, targets=y)
+        metrics = {
+            (f"{stage}_{k}" if k != "loss" or stage != "train" else k): v
+            for k, v in metrics.items()
+        }
+        for k, v in metrics.items():
+            if k == "loss":
+                self.log(k, v, on_step=True, prog_bar=True)
+            elif "_category_recall" not in k:
+                self.log_dict(metrics, on_epoch=True, prog_bar=True)
+        return metrics
 
     def training_step(self, batch: Dict[str, Any], batch_idx: int):
         return self.shared_step(batch, batch_idx, stage="train")
