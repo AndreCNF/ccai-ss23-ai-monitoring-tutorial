@@ -31,6 +31,7 @@ from coal_emissions_monitoring.data_cleaning import (
     load_final_dataset,
 )
 from coal_emissions_monitoring.ml_utils import (
+    emissions_to_category,
     get_facility_set_mapper,
     split_data_in_sets,
 )
@@ -285,6 +286,9 @@ class CoalEmissionsDataModule(LightningDataModule):
             axis=1,
         )
         self.emissions_quantiles = self.calculate_emissions_quantiles(self.gdf)
+        self.category_weights = self.calculate_categorical_weights(
+            self.gdf, self.emissions_quantiles
+        )
         self.gdf = self.normalise_emissions(self.gdf, self.emissions_quantiles)
         if stage == "fit":
             self.train_dataset = CoalEmissionsDataset(
@@ -390,3 +394,40 @@ class CoalEmissionsDataModule(LightningDataModule):
             emissions_quantiles = self.emissions_quantiles
         gdf[self.target] = gdf[self.target] / emissions_quantiles[0.99]
         return gdf
+
+    def calculate_categorical_weights(
+        self,
+        gdf: Optional[gpd.GeoDataFrame] = None,
+        emissions_quantiles: Optional[Dict[float, float]] = None,
+    ) -> Dict[int, float]:
+        """
+        Calculate the weights for each category in the categorical target.
+
+        Args:
+            gdf (Optional[gpd.GeoDataFrame]):
+                The dataset to calculate the weights for. If None,
+                the dataset's geodataframe is used.
+            emissions_quantiles (Optional[Dict[float, float]]):
+                The quantiles of the emissions for the train set.
+
+        Returns:
+            Dict[int, float]:
+                The weights for each category in the categorical target.
+        """
+        if gdf is None:
+            gdf = self.gdf
+        if emissions_quantiles is None:
+            emissions_quantiles = self.emissions_quantiles
+        # get the categories from the target value
+        categories = gdf.loc[gdf.data_set == "train", self.target].apply(
+            emissions_to_category,
+            quantiles=emissions_quantiles,
+            rescale=False,
+        )
+        # calculate their frequency
+        category_counts = categories.value_counts()
+        # calculate the weight for each category
+        category_weights = category_counts.sum() / category_counts
+        # normalise the weights to have min 1
+        category_weights = category_weights / category_weights.min()
+        return category_weights.to_dict()

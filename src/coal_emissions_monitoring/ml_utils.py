@@ -1,7 +1,8 @@
-from typing import Dict
+from typing import Dict, Tuple
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import torch
 
 from coal_emissions_monitoring.data_cleaning import load_clean_campd_facilities_gdf
 from coal_emissions_monitoring.constants import TEST_YEAR, TRAIN_VAL_RATIO
@@ -87,3 +88,75 @@ def split_data_in_sets(
     else:
         data_set = data_set_mapper[row.facility_id]
     return data_set
+
+
+def emissions_to_category(
+    emissions: float, quantiles: Dict[float, float], rescale: bool = False
+) -> int:
+    """
+    Convert emissions to a category based on quantiles. The quantiles are
+    calculated from the training data. Here's how the categories are defined:
+    - 0: no emissions
+    - 1: low emissions
+    - 2: medium emissions
+    - 3: high emissions
+    - 4: very high emissions
+
+    Args:
+        emissions (float): emissions value
+        quantiles (Dict[float, float]): quantiles to use for categorization
+        rescale (bool): whether to rescale emissions to the original range,
+            using the 99th quantile as the maximum value
+
+    Returns:
+        int: category
+    """
+    if rescale:
+        emissions = emissions * quantiles[0.99]
+    if emissions <= 0:
+        return 0
+    elif emissions <= quantiles[0.3]:
+        return 1
+    elif emissions > quantiles[0.3] and emissions <= quantiles[0.6]:
+        return 2
+    elif emissions > quantiles[0.6] and emissions <= quantiles[0.99]:
+        return 3
+    else:
+        return 4
+
+
+def preds_n_targets_to_categories(
+    preds: torch.Tensor,
+    targets: torch.Tensor,
+    quantiles: Dict[float, float],
+    rescale: bool = False,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Convert emissions to a category based on quantiles. The quantiles are
+    calculated from the training data. Here's how the categories are defined:
+    - 0: no emissions
+    - 1: low emissions
+    - 2: medium emissions
+    - 3: high emissions
+    - 4: very high emissions
+
+    Args:
+        preds (torch.Tensor): emissions predictions
+        targets (torch.Tensor): emissions targets
+        quantiles (Dict[float, float]): quantiles to use for categorization
+        rescale (bool): whether to rescale emissions to the original range,
+            using the 99th quantile as the maximum value
+
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor]: tuple of predictions and targets
+    """
+    preds_cat = torch.tensor(
+        [
+            emissions_to_category(y_pred_i, quantiles, rescale=rescale)
+            for y_pred_i in preds
+        ]
+    ).to(preds.device)
+    targets_cat = torch.tensor(
+        [emissions_to_category(y_i, quantiles, rescale=rescale) for y_i in targets]
+    ).to(targets.device)
+    return preds_cat, targets_cat
