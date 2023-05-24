@@ -43,11 +43,16 @@ class CoalEmissionsModel(LightningModule):
         )
         # assign weights to each sample based on the categories
         weights = torch.tensor(
-            [self.category_weights[int(cat)] for cat in targets_cat], dtype=torch.float
+            [self.category_weights[int(cat)] for cat in targets_cat],
+            dtype=torch.float,
+            device=self.device,
         )
         # calculate the weighted mean squared error loss
         return (
-            torch.nn.functional.mse_loss(preds, targets, reduction="none") * weights
+            torch.nn.functional.mse_loss(
+                preds.to(self.device), targets.to(self.device), reduction="none"
+            )
+            * weights
         ).mean()
 
     def forward(self, x):
