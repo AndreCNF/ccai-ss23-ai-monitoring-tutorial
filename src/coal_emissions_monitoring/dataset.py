@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Dict, Optional, Union
+from loguru import logger
 import numpy as np
 import torch
 from torch.utils.data import IterableDataset, DataLoader
@@ -109,7 +110,14 @@ class CoalEmissionsDataset(IterableDataset):
         for idx in range(worker_id, len(self.gdf), worker_total_num):
             row = self.gdf.iloc[idx]
             if self.use_local_images:
-                image = np.load(row.local_image_path)
+                try:
+                    image = np.load(row.local_image_path)
+                except TypeError as e:
+                    logger.warning(
+                        f"Could not load local image at {row.local_image_path}. "
+                        f"Original error: {e}"
+                    )
+                    continue
             else:
                 image = get_image_from_cog(
                     cog_url=row.cog_url, geometry=row.geometry, size=self.image_size
@@ -120,7 +128,15 @@ class CoalEmissionsDataset(IterableDataset):
             ) or is_image_too_bright(image, max_mean_val=self.max_mean_val):
                 continue
             if self.transforms is not None:
-                image = self.transforms(image).squeeze(0)
+                try:
+                    image = self.transforms(image).squeeze(0)
+                except AssertionError as e:
+                    logger.warning(
+                        f"Could not transform image at {row.local_image_path}. "
+                        f"Original error: {e}"
+                    )
+                    continue
+
             target = torch.tensor(row[self.target]).float()
             metadata = row.drop([self.target, "geometry", "data_set"]).to_dict()
             metadata["ts"] = str(metadata["ts"])
@@ -316,7 +332,6 @@ class CoalEmissionsDataModule(LightningDataModule):
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             pin_memory=True if torch.cuda.is_available() else False,
-            drop_last=True,
         )
 
     def train_dataloader(self):
