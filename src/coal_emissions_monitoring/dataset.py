@@ -1,12 +1,18 @@
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Optional, Union
 from loguru import logger
+import warnings
 import numpy as np
 import torch
 from torch.utils.data import IterableDataset, DataLoader
 from lightning import LightningDataModule
 import geopandas as gpd
 from tqdm.auto import tqdm
+
+# surpress batch size warning
+warnings.filterwarnings(
+    "ignore", message="Trying to infer the `batch_size` from an ambiguous*"
+)
 
 from coal_emissions_monitoring.constants import (
     BATCH_SIZE,
