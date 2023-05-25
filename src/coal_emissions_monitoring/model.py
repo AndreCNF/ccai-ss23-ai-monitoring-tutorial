@@ -3,8 +3,12 @@ from lightning import LightningModule
 import torch
 import torchmetrics
 from sklearn.metrics import balanced_accuracy_score
+import warnings
 
 from coal_emissions_monitoring.constants import POSITIVE_THRESHOLD
+
+# surpress balanced accuracy warning
+warnings.filterwarnings("ignore", message="y_pred contains classes not in y_true*")
 
 
 class SmallCNN(torch.nn.Module):
