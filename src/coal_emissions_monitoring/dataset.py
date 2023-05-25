@@ -57,11 +57,10 @@ class CoalEmissionsDataset(IterableDataset):
             gdf (gpd.GeoDataFrame):
                 A GeoDataFrame with the following columns:
                 - facility_id
-                - facility_name
                 - latitude
                 - longitude
                 - ts
-                - co2_mass_short_tons
+                - is_powered_on
                 - cloud_cover
                 - cog_url
                 - geometry
@@ -151,7 +150,6 @@ class CoalEmissionsDataModule(LightningDataModule):
         predownload_images: bool = False,
         download_missing_images: bool = False,
         images_dir: str = "images/",
-        must_have_cooling_tower: bool = False,
         num_workers: int = 0,
     ):
         """
@@ -195,9 +193,6 @@ class CoalEmissionsDataModule(LightningDataModule):
                 images_dir path
             images_dir (str):
                 The directory to save images to if predownload_images is True
-            must_have_cooling_tower (bool):
-                Whether to only include images of power plants that have
-                cooling tower(s)
             num_workers (int):
                 The number of workers to use for loading data
         """
@@ -218,7 +213,6 @@ class CoalEmissionsDataModule(LightningDataModule):
         self.predownload_images = predownload_images
         self.download_missing_images = download_missing_images
         self.images_dir = images_dir
-        self.must_have_cooling_tower = must_have_cooling_tower
         self.num_workers = num_workers
         self.emissions_quantiles = None
 
@@ -269,14 +263,9 @@ class CoalEmissionsDataModule(LightningDataModule):
                     self.gdf.local_image_path = self.gdf.local_image_path.str.replace(
                         current_image_path, self.images_dir
                     )
-        if self.must_have_cooling_tower:
-            self.gdf = filter_to_cooling_tower_plants(
-                gdf=self.gdf,
-                campd_facilities_path=self.campd_facilities_path,
-            )
         # split the data into train, validation and test sets
         facility_set_mapper = get_facility_set_mapper(
-            campd_facilities_path=self.campd_facilities_path,
+            self.gdf,
             train_val_ratio=self.train_val_ratio,
         )
         self.gdf["data_set"] = self.gdf.apply(
@@ -285,11 +274,6 @@ class CoalEmissionsDataModule(LightningDataModule):
             ),
             axis=1,
         )
-        self.emissions_quantiles = self.calculate_emissions_quantiles(self.gdf)
-        self.category_weights = self.calculate_categorical_weights(
-            self.gdf, self.emissions_quantiles
-        )
-        self.gdf = self.normalise_emissions(self.gdf, self.emissions_quantiles)
         if stage == "fit":
             self.train_dataset = CoalEmissionsDataset(
                 gdf=self.gdf[self.gdf.data_set == "train"].sample(frac=1),
@@ -341,93 +325,3 @@ class CoalEmissionsDataModule(LightningDataModule):
 
     def test_dataloader(self):
         return self.get_dataloader("test")
-
-    def calculate_emissions_quantiles(
-        self, gdf: Optional[gpd.GeoDataFrame] = None
-    ) -> Dict[float, float]:
-        """
-        Calculate the quantiles of the emissions for the train set.
-        This needs to be run after the facilities have been mapped to
-        train, validation and test sets, using the `get_facility_set_mapper`
-        function.
-
-        Args:
-            gdf (Optional[gpd.GeoDataFrame]):
-                The dataset to calculate the quantiles for. If None,
-                the dataset's geodataframe is used.
-
-        Returns:
-            Dict[float, float]:
-                The quantiles of the emissions for the train set.
-        """
-        if gdf is None:
-            gdf = self.gdf
-        return (
-            gdf.loc[(gdf.data_set == "train") & (gdf[self.target] > 0), self.target]
-            .quantile([0.3, 0.6, 0.99])
-            .to_dict()
-        )
-
-    def normalise_emissions(
-        self,
-        gdf: Optional[gpd.GeoDataFrame] = None,
-        emissions_quantiles: Optional[Dict[float, float]] = None,
-    ) -> gpd.GeoDataFrame:
-        """
-        Normalise the emissions by diving by the 99th quantile of the
-        emissions from the train set.
-
-        Args:
-            gdf (Optional[gpd.GeoDataFrame]):
-                The dataset to normalise. If None,
-                the dataset's geodataframe is used.
-            emissions_quantiles (Optional[Dict[float, float]]):
-                The quantiles of the emissions for the train set.
-
-        Returns:
-            gpd.GeoDataFrame:
-                The normalised dataset.
-        """
-        if gdf is None:
-            gdf = self.gdf
-        if emissions_quantiles is None:
-            emissions_quantiles = self.emissions_quantiles
-        gdf[self.target] = gdf[self.target] / emissions_quantiles[0.99]
-        return gdf
-
-    def calculate_categorical_weights(
-        self,
-        gdf: Optional[gpd.GeoDataFrame] = None,
-        emissions_quantiles: Optional[Dict[float, float]] = None,
-    ) -> Dict[int, float]:
-        """
-        Calculate the weights for each category in the categorical target.
-
-        Args:
-            gdf (Optional[gpd.GeoDataFrame]):
-                The dataset to calculate the weights for. If None,
-                the dataset's geodataframe is used.
-            emissions_quantiles (Optional[Dict[float, float]]):
-                The quantiles of the emissions for the train set.
-
-        Returns:
-            Dict[int, float]:
-                The weights for each category in the categorical target.
-        """
-        if gdf is None:
-            gdf = self.gdf
-        if emissions_quantiles is None:
-            emissions_quantiles = self.emissions_quantiles
-        # get the categories from the target value
-        categories = gdf.loc[gdf.data_set == "train", self.target].apply(
-            emissions_to_category,
-            quantiles=emissions_quantiles,
-            rescale=False,
-        )
-        # calculate their frequency
-        category_counts = categories.value_counts()
-        # calculate the weight for each category
-        category_weights = category_counts.sum() / category_counts
-        # normalise the weights to have min 1
-        category_weights = category_weights / category_weights.min()
-        return category_weights.to_dict()

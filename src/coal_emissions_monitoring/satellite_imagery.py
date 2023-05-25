@@ -170,6 +170,8 @@ def get_aws_cog_links_from_geom(
         items = items[:max_items]
     # create a dictionary that contains the tile ID and the links to the COGs and metadata
     output = dict(tile_id=[item.id for item in items])
+    if len(items) == 0:
+        return None
     asset_keys = items[0].assets.keys()
     for key in asset_keys:
         output[key] = [item.assets[key].href for item in items]
