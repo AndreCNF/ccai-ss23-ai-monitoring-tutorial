@@ -6,7 +6,7 @@ COLLECTION = "sentinel-s2-l2a-cogs"  # Sentinel-2, Level 2A, COGs
 AOI_SIZE_METERS = 640
 IMAGE_SIZE_PX = 64
 CROP_SIZE_PX = 32
-START_DATE = datetime(year=2017, month=1, day=1)
+START_DATE = datetime(year=2016, month=1, day=1)
 END_DATE = datetime(year=2019, month=12, day=31)
 MAX_DARK_FRAC = 0.5
 MAX_BRIGHT_MEAN = 250

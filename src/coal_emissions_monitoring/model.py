@@ -109,9 +109,8 @@ class CoalEmissionsModel(LightningModule):
         )
         # calculate balanced accuracy, which accounts for class imbalance
         metrics["balanced_accuracy"] = balanced_accuracy_score(
-            y_pred=(preds > POSITIVE_THRESHOLD).int(),
-            y_true=targets.int(),
-            adjusted=True,
+            y_pred=(preds.cpu() > POSITIVE_THRESHOLD).int(),
+            y_true=targets.cpu().int(),
         )
         # calculate recall and precision
         metrics["recall"] = torchmetrics.functional.recall(
