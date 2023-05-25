@@ -38,7 +38,7 @@ ALL_BANDS = [
     "b11",
     "b12",
 ]
-EMISSIONS_TARGET = "co2_mass_short_tons"
+EMISSIONS_TARGET = "is_powered_on"
 EMISSIONS_CATEGORIES = {
     0: "no_emissions",
     1: "low",
@@ -47,3 +47,4 @@ EMISSIONS_CATEGORIES = {
     4: "very_high",
 }
 RANDOM_TRANSFORM_PROB = 0.5
+POSITIVE_THRESHOLD = 0.5

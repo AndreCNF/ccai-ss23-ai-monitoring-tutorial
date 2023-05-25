@@ -1,4 +1,5 @@
 import kornia.augmentation as K
+import torch
 
 from coal_emissions_monitoring.constants import CROP_SIZE_PX, RANDOM_TRANSFORM_PROB
 
@@ -46,3 +47,16 @@ def get_transform(
         raise ValueError(
             f"Invalid data group: {data_group}." "Expected one of: train, val, test."
         )
+
+
+efficientnet_transform = K.AugmentationSequential(
+    K.Resize(size=(256, 256)),
+    K.CenterCrop(size=(224, 224)),
+    K.Normalize(
+        mean=torch.tensor([0.485, 0.456, 0.406]),
+        std=torch.tensor([0.229, 0.224, 0.225]),
+    ),
+    data_keys=["image"],
+    same_on_batch=False,
+    keepdim=True,
+)

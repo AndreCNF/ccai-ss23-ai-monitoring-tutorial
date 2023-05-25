@@ -274,6 +274,7 @@ class CoalEmissionsDataModule(LightningDataModule):
             ),
             axis=1,
         )
+        self.pos_weight = self.get_pos_weight(self.gdf)
         if stage == "fit":
             self.train_dataset = CoalEmissionsDataset(
                 gdf=self.gdf[self.gdf.data_set == "train"].sample(frac=1),
@@ -315,6 +316,7 @@ class CoalEmissionsDataModule(LightningDataModule):
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             pin_memory=True if torch.cuda.is_available() else False,
+            drop_last=True,
         )
 
     def train_dataloader(self):
@@ -325,3 +327,22 @@ class CoalEmissionsDataModule(LightningDataModule):
 
     def test_dataloader(self):
         return self.get_dataloader("test")
+
+    def get_pos_weight(self, gdf: Optional[gpd.GeoDataFrame] = None) -> float:
+        """
+        Get the positive weight for the dataset, based on class imbalance.
+
+        Args:
+            gdf (Optional[gpd.GeoDataFrame]):
+                The dataset to use for calculating the positive weight.
+                If None, the dataset used for training will be used.
+
+        Returns:
+            float:
+                The positive weight
+        """
+        if gdf is None:
+            gdf = self.gdf
+        num_positives = gdf[self.target].sum()
+        num_negatives = len(gdf) - num_positives
+        return num_negatives / num_positives
