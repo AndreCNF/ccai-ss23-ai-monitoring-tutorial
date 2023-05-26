@@ -391,9 +391,15 @@ def fetch_image_path_from_cog(
                         cog_url=cog_url, geometry=geometry, size=size
                     )
                 elif cog_type == "all":
-                    image = get_all_bands_image(
-                        cog_urls=cog_url, geometry=geometry, size=size
-                    )
+                    try:
+                        image = get_all_bands_image(
+                            cog_urls=cog_url, geometry=geometry, size=size
+                        )
+                    except ValueError as e:
+                        logger.warning(
+                            f"Failed to download image {cog_url}. Original error:\n{e}"
+                        )
+                        return None
             except RasterioIOError as e:
                 logger.warning(
                     f"Failed to download image {cog_url}. Original error:\n{e}"
