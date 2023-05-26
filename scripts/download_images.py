@@ -80,7 +80,7 @@ gdf["local_image_all_bands_path"] = gdf.progress_apply(
 # %%
 # compress all images into one file
 os.system(
-    "!tar -czvf /Users/adminuser/GitHub/ccai-ss23-ai-monitoring-tutorial/data/google/images/all_bands_images.tar.gz /Users/adminuser/GitHub/ccai-ss23-ai-monitoring-tutorial/data/google/images/all_bands"
+    "tar -czvf /Users/adminuser/GitHub/ccai-ss23-ai-monitoring-tutorial/data/google/images/all_bands_images.tar.gz /Users/adminuser/GitHub/ccai-ss23-ai-monitoring-tutorial/data/google/images/all_bands"
 )
 
 # %%
