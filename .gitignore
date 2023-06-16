@@ -129,4 +129,7 @@ dmypy.json
 .pyre/
 .vscode/
 notebooks/lightning_logs/*
-data/*
+data/campd/
+data/google/
+data/models/
+.DS_Store
